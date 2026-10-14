@@ -188,6 +188,7 @@ export const TOOLS: Tool[] = [
   {
     id: "remove-bg", category: "image", icon: "Eraser", color: C.teal, accept: IMG, multiple: true, mode: "client", fullPageLoad: true,
     options: [
+      { type: "select", key: "method", options: ["auto", "ai", "flat"], default: "auto" },
       { type: "select", key: "background", options: ["transparent", "white", "custom"], default: "transparent" },
       { type: "color", key: "bgColor", default: "#ffffff", showIf: { key: "background", equals: "custom" } },
     ],

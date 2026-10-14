@@ -163,6 +163,40 @@ const cases = [
     if (!navOk || external.length) process.exitCode = 1;
     await pn.close();
 
+    // logo on plain white: background keyed out from the border, the AI mask decides enclosed white
+    // areas — the inside of "o" goes, the white "Tube" letters inside the red box stay
+    const pl = await ctx.newPage();
+    await pl.goto(`${BASE}/remove-bg`);
+    const logo = await pl.evaluate(async () => {
+      const c = new OffscreenCanvas(480, 160);
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, 480, 160);
+      g.font = "bold 90px sans-serif"; g.textBaseline = "alphabetic";
+      g.fillStyle = "#333"; g.fillText("You", 8, 115);
+      const you = g.measureText("You").width, y = g.measureText("Y").width, o = g.measureText("o").width;
+      g.fillStyle = "#e52d27"; g.beginPath(); g.roundRect(you + 18, 15, 470 - you - 18, 130, 28); g.fill();
+      g.fillStyle = "#fff"; g.fillText("Tube", you + 30, 115);
+      const t = g.measureText("T").width;
+      const r = new FileReader();
+      const b64 = await new Promise(async (res) => { r.onload = () => res(r.result.split(",")[1]); r.readAsDataURL(await c.convertToBlob()); });
+      return { b64, o: [Math.round(8 + y + o / 2), 85], t: [Math.round(you + 30 + t / 2), 90], box: [Math.round(you + 24), 80] };
+    });
+    await pl.setInputFiles('input[type="file"]', { name: "logo.png", mimeType: "image/png", buffer: Buffer.from(logo.b64, "base64") });
+    const dlLogo = pl.waitForEvent("download", { timeout: 120000 });
+    await pl.locator("aside button").last().click();
+    const logoFile = path.join(OUT, "remove-bg__logo.png");
+    await (await dlLogo).saveAs(logoFile);
+    const alpha = await pl.evaluate(async ({ b64, pts }) => {
+      const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+      const g = new OffscreenCanvas(bmp.width, bmp.height).getContext("2d");
+      g.drawImage(bmp, 0, 0);
+      return Object.fromEntries(Object.entries(pts).map(([k, [x, y]]) => [k, g.getImageData(x, y, 1, 1).data[3]]));
+    }, { b64: require("fs").readFileSync(logoFile).toString("base64"), pts: { outside: [4, 4], oHole: logo.o, tubeT: logo.t, box: logo.box } });
+    const logoOk = alpha.outside === 0 && alpha.oHole === 0 && alpha.tubeT === 255 && alpha.box === 255;
+    console.log(`${logoOk ? "OK  " : "FAIL"} remove-bg logo     ${JSON.stringify(alpha)}`);
+    if (!logoOk) process.exitCode = 1;
+    await pl.close();
+
     const check = (ok, name, info) => {
       console.log(`${ok ? "OK  " : "FAIL"} ${name.padEnd(18)} ${info}`);
       if (!ok) process.exitCode = 1;

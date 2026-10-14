@@ -59,19 +59,168 @@ function drawScaled(img: CanvasImageSource & { width: number; height: number }, 
 
 // ---------------------------------------------------------------------------
 
-export async function removeBg(files: File[], o: Options, onProgress?: (p: Progress) => void): Promise<OutputFile[]> {
+type Rgb = [number, number, number];
+const KEY_TOLERANCE = 40; // RGB distance still counted as "background color" (JPEG noise, anti-aliasing)
+
+/**
+ * Dominant color of the image border, the share of border pixels close to it and how much those
+ * vary (max per-channel std). `null` color = the border is (mostly) already transparent.
+ */
+function borderColor(d: Uint8ClampedArray, w: number, h: number): { color: Rgb | null; share: number; spread: number } {
+  const idx: number[] = [];
+  for (let x = 0; x < w; x++) idx.push(x, (h - 1) * w + x);
+  for (let y = 1; y < h - 1; y++) idx.push(y * w, y * w + w - 1);
+  const clear = idx.filter((i) => d[i * 4 + 3] < 16).length;
+  if (clear / idx.length >= 0.5) return { color: null, share: clear / idx.length, spread: 0 };
+  // most frequent 4-bit-per-channel bucket, then the mean of its pixels
+  const count = new Uint32Array(4096);
+  const bucket = (i: number) => ((d[i * 4] >> 4) << 8) | ((d[i * 4 + 1] >> 4) << 4) | (d[i * 4 + 2] >> 4);
+  for (const i of idx) count[bucket(i)]++;
+  const best = count.indexOf(Math.max(...count));
+  const mean = (px: number[]) => [0, 1, 2].map((c) => px.reduce((t, i) => t + d[i * 4 + c], 0) / px.length) as Rgb;
+  const color = mean(idx.filter((i) => bucket(i) === best));
+  const near = idx.filter((i) => d[i * 4 + 3] >= 16 && colorDist(d, i, color) <= KEY_TOLERANCE);
+  const m = mean(near);
+  const spread = Math.max(...[0, 1, 2].map((c) => Math.sqrt(near.reduce((t, i) => t + (d[i * 4 + c] - m[c]) ** 2, 0) / near.length)));
+  return { color, share: (near.length + clear) / idx.length, spread };
+}
+
+function colorDist(d: Uint8ClampedArray, i: number, c: Rgb) {
+  return Math.hypot(d[i * 4] - c[0], d[i * 4 + 1] - c[1], d[i * 4 + 2] - c[2]);
+}
+
+/** 4-connected flood fill over `ok` pixels from `seeds`; marks `mark` in `out` and returns the pixels reached. */
+function flood(w: number, h: number, seeds: number[], ok: (i: number) => boolean, out: Uint8Array, mark: number): number[] {
+  const reached: number[] = [];
+  const visit = (i: number) => { if (!out[i] && ok(i)) { out[i] = mark; reached.push(i); } };
+  seeds.forEach(visit);
+  for (let k = 0; k < reached.length; k++) {
+    const i = reached[k];
+    const x = i % w;
+    if (x > 0) visit(i - 1);
+    if (x < w - 1) visit(i + 1);
+    if (i >= w) visit(i - w);
+    if (i < w * (h - 1)) visit(i + w);
+  }
+  return reached;
+}
+
+/**
+ * Removes a plain background by flood-filling it from the image border, so areas of the same
+ * color enclosed by the subject survive. Whether such an enclosed area is a hole (the inside of
+ * an "o") or part of the subject (the white "Tube" of the old YouTube logo) is not a color
+ * question: the AI mask decides, each area going with its mean alpha. The 1px rim of the subject
+ * is un-blended from the background color for anti-aliased edges without halo or dark fringe.
+ */
+async function keyOutBackground(img: ImageData, bg: Rgb | null, aiAlpha: () => Promise<Uint8ClampedArray>) {
+  const { data: d, width: w, height: h } = img;
+  const isBg = (i: number) => d[i * 4 + 3] < 16 || (bg !== null && colorDist(d, i, bg) <= KEY_TOLERANCE);
+  const gone = new Uint8Array(w * h); // 1 = background, 2 = enclosed area kept as subject
+  const edge: number[] = [];
+  for (let x = 0; x < w; x++) edge.push(x, (h - 1) * w + x);
+  for (let y = 0; y < h; y++) edge.push(y * w, y * w + w - 1);
+  flood(w, h, edge, isBg, gone, 1);
+
+  const enclosed: number[][] = [];
+  for (let i = 0; i < w * h; i++) {
+    if (gone[i] || !isBg(i)) continue;
+    const area = flood(w, h, [i], isBg, gone, 2);
+    if (area.length >= 12) enclosed.push(area); // smaller specks are highlights or noise
+  }
+  if (enclosed.length) {
+    const ai = await aiAlpha();
+    for (const area of enclosed) {
+      if (area.reduce((t, i) => t + ai[i], 0) / area.length < 128) for (const i of area) gone[i] = 1;
+    }
+  }
+
+  if (!bg) {
+    for (let i = 0; i < w * h; i++) if (gone[i] === 1) d[i * 4 + 3] = 0;
+    return;
+  }
+  const near = (i: number, r: number, test: (j: number) => boolean) => {
+    const x = i % w, y = (i - x) / w;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h && test(ny * w + nx)) return true;
+    }
+    return false;
+  };
+  const rim = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (gone[i] !== 1 && near(i, 1, (j) => gone[j] === 1)) rim[i] = 1;
+  const src = d.slice();
+  for (let i = 0; i < w * h; i++) {
+    if (gone[i] === 1) { d[i * 4 + 3] = 0; continue; }
+    if (!rim[i]) continue;
+    // Un-blend the edge pixel p = a * fg + (1 - a) * bg. fg = the most contrasted solid subject
+    // pixel nearby, a = projection of p on bg->fg; without one (1-2px strokes), the smallest a
+    // that keeps fg in range ("color to alpha").
+    let fg = -1, best = 30;
+    near(i, 2, (j) => {
+      if (gone[j] !== 1 && !rim[j] && colorDist(src, j, bg) > best) { best = colorDist(src, j, bg); fg = j; }
+      return false;
+    });
+    let a = 0;
+    if (fg >= 0) {
+      let dot = 0;
+      for (let c = 0; c < 3; c++) dot += (src[i * 4 + c] - bg[c]) * (src[fg * 4 + c] - bg[c]);
+      a = Math.min(1, Math.max(0, dot / best ** 2));
+      for (let c = 0; c < 3; c++) d[i * 4 + c] = src[fg * 4 + c];
+    } else {
+      for (let c = 0; c < 3; c++) {
+        const p = src[i * 4 + c], b = bg[c];
+        if (p > b) a = Math.max(a, (p - b) / (255 - b));
+        else if (p < b) a = Math.max(a, (b - p) / b);
+      }
+      a = Math.min(1, a);
+      if (a > 0) for (let c = 0; c < 3; c++) d[i * 4 + c] = bg[c] + (src[i * 4 + c] - bg[c]) / a;
+    }
+    d[i * 4 + 3] = Math.round(src[i * 4 + 3] * a);
+  }
+}
+
+async function aiCutout(f: File, onProgress?: (p: Progress) => void): Promise<Blob> {
   const { removeBackground } = await import("@imgly/background-removal");
+  return removeBackground(f, {
+    // model + runtime are self-hosted (scripts/fetch-bg-model.mjs): no third-party request
+    publicPath: `${window.location.origin}/bg-model/`,
+    output: { format: "image/png" },
+    progress: (key: string, current: number, total: number) => {
+      if (key.startsWith("fetch") && total) onProgress?.({ phase: "model", fraction: current / total });
+      else if (key.startsWith("compute")) onProgress?.({ phase: "work" });
+    },
+  });
+}
+
+/**
+ * Plain-background cut-out, or null when `auto` finds the background too busy for it. Tightly
+ * cropped logos have the subject touching the border, hence the lenient share; photos fail on
+ * the spread (gradients, texture) rather than on the share.
+ */
+async function removeFlatBg(f: File, force: boolean, onProgress?: (p: Progress) => void): Promise<Blob | null> {
+  const bmp = await bitmap(f);
+  const { c, ctx } = canvas(bmp.width, bmp.height);
+  ctx.drawImage(bmp, 0, 0);
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const { color, share, spread } = borderColor(img.data, c.width, c.height);
+  if (!force && (share < 0.6 || spread > 10)) return null;
+  await keyOutBackground(img, color, async () => {
+    const mask = canvas(c.width, c.height);
+    mask.ctx.drawImage(await bitmap(await aiCutout(f, onProgress)), 0, 0, c.width, c.height);
+    const rgba = mask.ctx.getImageData(0, 0, c.width, c.height).data;
+    return rgba.filter((_, k) => k % 4 === 3);
+  });
+  ctx.putImageData(img, 0, 0);
+  return canvasToBlob(c, "image/png");
+}
+
+export async function removeBg(files: File[], o: Options, onProgress?: (p: Progress) => void): Promise<OutputFile[]> {
   const outs: OutputFile[] = [];
   for (const f of files) {
-    const cut = await removeBackground(f, {
-      // model + runtime are self-hosted (scripts/fetch-bg-model.mjs): no third-party request
-      publicPath: `${window.location.origin}/bg-model/`,
-      output: { format: "image/png" },
-      progress: (key: string, current: number, total: number) => {
-        if (key.startsWith("fetch") && total) onProgress?.({ phase: "model", fraction: current / total });
-        else if (key.startsWith("compute")) onProgress?.({ phase: "work" });
-      },
-    });
+    // ISNet is trained on photos: on logos and graphics it eats into areas of the background color
+    // and leaves a halo, so plain backgrounds are keyed out instead (AI only arbitrates holes).
+    const flat = o.method === "ai" ? null : await removeFlatBg(f, o.method === "flat", onProgress);
+    const cut = flat ?? await aiCutout(f, onProgress);
     if (o.background === "transparent") {
       outs.push({ name: `${baseName(f.name)}_nobg.png`, blob: cut });
       continue;
