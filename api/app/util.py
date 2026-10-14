@@ -12,9 +12,11 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
+
+from .errors import ApiError
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
 CHUNK = 1024 * 1024
@@ -57,17 +59,17 @@ def stem_of(upload: UploadFile, default: str = "file") -> str:
 async def save_upload(upload: UploadFile, ws: Workspace, allowed: set[str] | None = None) -> Path:
     suffix = suffix_of(upload)
     if allowed is not None and suffix not in allowed:
-        raise HTTPException(400, f"Unsupported file type '{suffix or '?'}'. Allowed: {', '.join(sorted(allowed))}")
+        raise ApiError(400, "unsupported_type", f"Unsupported file type '{suffix or '?'}'", allowed=", ".join(sorted(allowed)))
     dest = ws.file(suffix)
     size = 0
     with dest.open("wb") as out:
         while chunk := await upload.read(CHUNK):
             size += len(chunk)
             if size > MAX_UPLOAD_BYTES:
-                raise HTTPException(413, f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)")
+                raise ApiError(413, "file_too_large", "File too large", max=MAX_UPLOAD_BYTES // (1024 * 1024))
             out.write(chunk)
     if size == 0:
-        raise HTTPException(400, "Empty file")
+        raise ApiError(400, "empty_file", "Empty file")
     return dest
 
 
@@ -78,16 +80,16 @@ async def run(cmd: list[str], timeout: int = 180, env: dict | None = None) -> No
     try:
         proc = await asyncio.to_thread(_run)
     except subprocess.TimeoutExpired:
-        raise HTTPException(504, "Processing timed out")
+        raise ApiError(504, "timeout", "Processing timed out")
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout).decode(errors="replace")[-600:]
-        raise HTTPException(500, f"{Path(cmd[0]).name} failed: {tail}")
+        raise ApiError(500, "tool_failed", f"{Path(cmd[0]).name} failed: {tail}")
 
 
 def send(path: Path, filename: str, ws: Workspace) -> FileResponse:
     if not path.exists():
         ws.cleanup()
-        raise HTTPException(500, "No output produced")
+        raise ApiError(500, "no_output", "No output produced")
     media = MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
     return FileResponse(path, media_type=media, filename=filename, background=BackgroundTask(ws.cleanup))
 
@@ -96,12 +98,12 @@ def assert_public_url(url: str) -> None:
     """Reject non-http(s) URLs and hosts resolving to private/loopback/link-local ranges (SSRF guard)."""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise HTTPException(400, "Only public http(s) URLs are allowed")
+        raise ApiError(400, "invalid_url", "Only public http(s) URLs are allowed")
     try:
         infos = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
     except socket.gaierror:
-        raise HTTPException(400, "Cannot resolve host")
+        raise ApiError(400, "unresolvable_host", "Cannot resolve host")
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if not ip.is_global:
-            raise HTTPException(400, "URL points to a non-public address")
+            raise ApiError(400, "private_url", "URL points to a non-public address")

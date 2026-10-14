@@ -3,8 +3,8 @@
 import json
 import re
 
-import fitz  # PyMuPDF
-from fastapi import HTTPException
+import pymupdf
+from .errors import ApiError
 
 PRESETS: dict[str, re.Pattern] = {
     "emails": re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"),
@@ -69,29 +69,29 @@ def parse_boxes(raw: str | None) -> list[dict]:
     try:
         data = json.loads(raw)
     except ValueError:
-        raise HTTPException(400, "Invalid areas")
+        raise ApiError(400, "invalid_areas", "Invalid areas")
     if not isinstance(data, list) or len(data) > MAX_BOXES:
-        raise HTTPException(400, "Invalid areas")
+        raise ApiError(400, "invalid_areas", "Invalid areas")
     boxes = []
     for b in data:
         try:
             box = {k: float(b[k]) for k in ("x", "y", "w", "h")}
             box["page"] = int(b["page"])
         except (KeyError, TypeError, ValueError):
-            raise HTTPException(400, "Invalid areas")
+            raise ApiError(400, "invalid_areas", "Invalid areas")
         boxes.append(box)
     return boxes
 
 
-def _text_hits(page: fitz.Page, presets: list[str], terms: list[str]) -> list[fitz.Rect]:
+def _text_hits(page: pymupdf.Page, presets: list[str], terms: list[str]) -> list[pymupdf.Rect]:
     """Match against the page's words joined by spaces; return the rects of every touched word."""
     words = page.get_text("words")
-    spans: list[tuple[int, int, fitz.Rect]] = []
+    spans: list[tuple[int, int, pymupdf.Rect]] = []
     parts: list[str] = []
     pos = 0
     for w in words:
         text = w[4]
-        spans.append((pos, pos + len(text), fitz.Rect(w[:4])))
+        spans.append((pos, pos + len(text), pymupdf.Rect(w[:4])))
         parts.append(text)
         pos += len(text) + 1
     rects = []
@@ -102,26 +102,26 @@ def _text_hits(page: fitz.Page, presets: list[str], terms: list[str]) -> list[fi
 
 def redact(src: str, out: str, boxes: list[dict], terms: list[str], presets: list[str]) -> int:
     count = 0
-    with fitz.open(src) as doc:
+    with pymupdf.open(src) as doc:
         if doc.needs_pass:
-            raise HTTPException(400, "PDF is password protected, unlock it first")
+            raise ApiError(400, "encrypted", "PDF is password protected")
         for pno, page in enumerate(doc):
             rects = []
             # boxes are fractions of the page as displayed (rotation applied); annotations use unrotated coords
             W, H = page.rect.width, page.rect.height
             for b in boxes:
                 if b["page"] == pno:
-                    r = fitz.Rect(b["x"] * W, b["y"] * H, (b["x"] + b["w"]) * W, (b["y"] + b["h"]) * H)
+                    r = pymupdf.Rect(b["x"] * W, b["y"] * H, (b["x"] + b["w"]) * W, (b["y"] + b["h"]) * H)
                     rects.append(r * page.derotation_matrix)
             if presets or terms:
                 rects += _text_hits(page, presets, terms)
             for r in rects:
                 page.add_redact_annot(r, fill=(0, 0, 0))
             if rects:
-                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_PIXELS)
+                page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_PIXELS)
                 count += len(rects)
         if not count:
-            raise HTTPException(400, "Nothing to redact: draw areas or enter text that appears in the document")
+            raise ApiError(400, "nothing_to_redact", "Nothing to redact")
         # drop metadata, hidden text, JS, attachments, links… that could leak what was redacted
         doc.scrub()
         doc.save(out, garbage=4, deflate=True, clean=True)

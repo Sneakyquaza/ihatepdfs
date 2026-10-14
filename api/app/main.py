@@ -2,30 +2,45 @@
 
 import asyncio
 import difflib
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Awaitable, Callable
 
-import fitz  # PyMuPDF
+import pymupdf
 import pikepdf
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
 
+from .errors import ApiError
 from .ratelimit import rate_limit_middleware
 from .redact import PRESETS, parse_boxes, redact
 from .util import Workspace, assert_public_url, run, save_upload, send, stem_of
 
 app = FastAPI(title="iHatePDFs API", docs_url=None, redoc_url=None, openapi_url=None)
 app.middleware("http")(rate_limit_middleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
-)
+
+log = logging.getLogger("uvicorn.error")
+
+
+@app.exception_handler(pikepdf.PasswordError)
+async def _encrypted(_: Request, __: Exception):
+    return JSONResponse({"detail": {"code": "encrypted", "message": "PDF is password protected"}}, status_code=400)
+
+
+@app.exception_handler(pikepdf.PdfError)
+@app.exception_handler(pymupdf.FileDataError)
+async def _invalid_pdf(_: Request, exc: Exception):
+    log.warning("invalid PDF: %s", exc)
+    return JSONResponse({"detail": {"code": "invalid_pdf", "message": "Damaged or invalid PDF"}}, status_code=400)
+
+
+@app.exception_handler(Exception)
+async def _unexpected(_: Request, exc: Exception):
+    log.exception("unhandled error", exc_info=exc)
+    return JSONResponse({"detail": {"code": "processing_failed", "message": "Processing failed"}}, status_code=500)
+
 
 PDF = {".pdf"}
 OFFICE = {".doc", ".docx", ".odt", ".rtf", ".txt", ".ppt", ".pptx", ".odp", ".xls", ".xlsx", ".ods", ".csv"}
@@ -41,7 +56,7 @@ _queued = 0
 async def handle(work: Callable[[Workspace], Awaitable[Response]]) -> Response:
     global _queued
     if _queued >= MAX_QUEUE:
-        raise HTTPException(503, "Server busy, please retry in a minute.", headers={"Retry-After": "30"})
+        raise ApiError(503, "busy", "Server busy", headers={"Retry-After": "30"})
     ws = Workspace()
     _queued += 1
     waiting = True
@@ -71,7 +86,7 @@ GS_LEVELS = {"low": "/printer", "recommended": "/ebook", "extreme": "/screen"}
 @app.post("/api/compress-pdf")
 async def compress_pdf(file: UploadFile = File(...), level: str = Form("recommended")):
     if level not in GS_LEVELS:
-        raise HTTPException(400, "Invalid level")
+        raise ApiError(400, "invalid_option", "Invalid level")
 
     async def work(ws: Workspace):
         src = await save_upload(file, ws, PDF)
@@ -189,9 +204,9 @@ async def pdf_to_powerpoint(file: UploadFile = File(...)):
 
         def _convert():
             prs = Presentation()
-            with fitz.open(src) as doc:
+            with pymupdf.open(src) as doc:
                 if doc.page_count == 0:
-                    raise HTTPException(400, "PDF has no pages")
+                    raise ApiError(400, "no_pages", "PDF has no pages")
                 first = doc[0].rect
                 # 1pt = 12700 EMU
                 prs.slide_width, prs.slide_height = Emu(int(first.width * 12700)), Emu(int(first.height * 12700))
@@ -242,7 +257,7 @@ def _safe_fetcher():
 @app.post("/api/html-to-pdf")
 async def html_to_pdf(file: UploadFile | None = File(None), url: str | None = Form(None)):
     if not file and not url:
-        raise HTTPException(400, "Provide an HTML file or a URL")
+        raise ApiError(400, "missing_input", "Provide an HTML file or a URL")
 
     async def work(ws: Workspace):
         from weasyprint import HTML
@@ -268,7 +283,7 @@ async def html_to_pdf(file: UploadFile | None = File(None), url: str | None = Fo
 async def ocr_pdf(file: UploadFile = File(...), lang: str = Form("eng")):
     langs = [l for l in lang.split("+") if l]
     if not langs or any(l not in OCR_LANGS for l in langs):
-        raise HTTPException(400, f"Invalid language. Allowed: {', '.join(sorted(OCR_LANGS))}")
+        raise ApiError(400, "invalid_option", "Invalid language")
 
     async def work(ws: Workspace):
         src = await save_upload(file, ws, PDF)
@@ -298,7 +313,7 @@ async def pdf_to_pdfa(file: UploadFile = File(...)):
 @app.post("/api/protect-pdf")
 async def protect_pdf(file: UploadFile = File(...), password: str = Form(...)):
     if not password:
-        raise HTTPException(400, "Password required")
+        raise ApiError(400, "password_required", "Password required")
 
     async def work(ws: Workspace):
         src = await save_upload(file, ws, PDF)
@@ -325,7 +340,7 @@ async def unlock_pdf(file: UploadFile = File(...), password: str = Form("")):
                 with pikepdf.open(src, password=password) as pdf:
                     pdf.save(out)
             except pikepdf.PasswordError:
-                raise HTTPException(400, "Wrong password")
+                raise ApiError(400, "wrong_password", "Wrong password")
 
         await asyncio.to_thread(_unlock)
         return send(out, f"{stem_of(file)}_unlocked.pdf", ws)
@@ -335,8 +350,8 @@ async def unlock_pdf(file: UploadFile = File(...), password: str = Form("")):
 
 # ---------- Compare ----------
 
-def _words(doc: fitz.Document) -> list[tuple[int, fitz.Rect, str]]:
-    return [(pno, fitz.Rect(w[:4]), w[4]) for pno, page in enumerate(doc) for w in page.get_text("words")]
+def _words(doc: pymupdf.Document) -> list[tuple[int, pymupdf.Rect, str]]:
+    return [(pno, pymupdf.Rect(w[:4]), w[4]) for pno, page in enumerate(doc) for w in page.get_text("words")]
 
 
 @app.post("/api/compare-pdf")
@@ -347,10 +362,10 @@ async def compare_pdf(file_a: UploadFile = File(...), file_b: UploadFile = File(
         out = ws.file(".pdf")
 
         def _compare():
-            with fitz.open(src_a) as a, fitz.open(src_b) as b, fitz.open() as result:
+            with pymupdf.open(src_a) as a, pymupdf.open(src_b) as b, pymupdf.open() as result:
                 wa, wb = _words(a), _words(b)
-                removed: dict[int, list[fitz.Rect]] = {}
-                added: dict[int, list[fitz.Rect]] = {}
+                removed: dict[int, list[pymupdf.Rect]] = {}
+                added: dict[int, list[pymupdf.Rect]] = {}
                 sm = difflib.SequenceMatcher(None, [w[2] for w in wa], [w[2] for w in wb], autojunk=False)
                 for tag, i1, i2, j1, j2 in sm.get_opcodes():
                     if tag in ("delete", "replace"):
@@ -362,8 +377,8 @@ async def compare_pdf(file_a: UploadFile = File(...), file_b: UploadFile = File(
 
                 gap, header = 24, 28
                 for i in range(max(a.page_count, b.page_count)):
-                    ra = a[i].rect if i < a.page_count else fitz.Rect(0, 0, 0, 0)
-                    rb = b[i].rect if i < b.page_count else fitz.Rect(0, 0, 0, 0)
+                    ra = a[i].rect if i < a.page_count else pymupdf.Rect(0, 0, 0, 0)
+                    rb = b[i].rect if i < b.page_count else pymupdf.Rect(0, 0, 0, 0)
                     width = ra.width + rb.width + gap
                     height = max(ra.height, rb.height) + header
                     page = result.new_page(width=width, height=height)
@@ -371,12 +386,12 @@ async def compare_pdf(file_a: UploadFile = File(...), file_b: UploadFile = File(
                     page.insert_text((ra.width + gap + 8, 18), f"B: {file_b.filename}  (page {i + 1})",
                                      fontsize=10, color=(0, 0.5, 0))
                     if i < a.page_count:
-                        page.show_pdf_page(fitz.Rect(0, header, ra.width, header + ra.height), a, i)
+                        page.show_pdf_page(pymupdf.Rect(0, header, ra.width, header + ra.height), a, i)
                         for r in removed.get(i, []):
                             page.draw_rect(r + (0, header, 0, header), color=None, fill=(1, 0, 0), fill_opacity=0.3)
                     if i < b.page_count:
                         ox = ra.width + gap
-                        page.show_pdf_page(fitz.Rect(ox, header, ox + rb.width, header + rb.height), b, i)
+                        page.show_pdf_page(pymupdf.Rect(ox, header, ox + rb.width, header + rb.height), b, i)
                         for r in added.get(i, []):
                             page.draw_rect(r + (ox, header, ox, header), color=None, fill=(0, 0.8, 0), fill_opacity=0.3)
                     page.draw_line((ra.width + gap / 2, 0), (ra.width + gap / 2, height), color=(0.6, 0.6, 0.6))
@@ -396,7 +411,7 @@ UPSCALE_MAX_INPUT_PIXELS = {2: 2_500_000, 4: 800_000}
 @app.post("/api/upscale-image")
 async def upscale_image(file: UploadFile = File(...), scale: int = Form(2)):
     if scale not in UPSCALE_MAX_INPUT_PIXELS:
-        raise HTTPException(400, "Scale must be 2 or 4")
+        raise ApiError(400, "invalid_option", "Scale must be 2 or 4")
 
     async def work(ws: Workspace):
         from PIL import Image, ImageFilter
@@ -407,7 +422,7 @@ async def upscale_image(file: UploadFile = File(...), scale: int = Form(2)):
         def _upscale():
             with Image.open(src) as im:
                 if im.width * im.height > UPSCALE_MAX_INPUT_PIXELS[scale]:
-                    raise HTTPException(400, f"Image too large for x{scale} upscale")
+                    raise ApiError(400, "image_too_large", "Image too large", scale=scale)
                 im = im.convert("RGBA") if im.mode in ("RGBA", "LA", "P") else im.convert("RGB")
                 model = Path(os.getenv("MODELS_DIR", "/models")) / f"FSRCNN_x{scale}.pb"
                 try:
@@ -501,7 +516,7 @@ async def grayscale_pdf(file: UploadFile = File(...)):
 async def image_to_text(file: UploadFile = File(...), lang: str = Form("eng")):
     langs = [l for l in lang.split("+") if l]
     if not langs or any(l not in OCR_LANGS for l in langs):
-        raise HTTPException(400, f"Invalid language. Allowed: {', '.join(sorted(OCR_LANGS))}")
+        raise ApiError(400, "invalid_option", "Invalid language")
 
     async def work(ws: Workspace):
         src = await save_upload(file, ws, IMAGES)

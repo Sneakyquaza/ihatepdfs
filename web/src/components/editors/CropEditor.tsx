@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CropRect } from "@/lib/editorTypes";
 import { extOf } from "@/lib/files";
 import { openPdf, renderPage } from "@/lib/pdfjs";
-import type { EditorProps } from "./shared";
+import { EditorError, type EditorProps } from "./shared";
 
 const RATIOS: [string, number | null][] = [
   ["free", null], ["1:1", 1], ["4:3", 4 / 3], ["3:2", 3 / 2], ["16:9", 16 / 9], ["9:16", 9 / 16], ["4:5", 4 / 5],
@@ -14,6 +14,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 export default function CropEditor({ files, onChange, t }: EditorProps<CropRect>) {
   const [url, setUrl] = useState("");
+  const [error, setError] = useState<unknown>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [rect, setRect] = useState<CropRect>({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
   const [ratio, setRatio] = useState<number | null>(null);
@@ -35,7 +36,7 @@ export default function CropEditor({ files, onChange, t }: EditorProps<CropRect>
       const canvas = await renderPage(doc, 1, 1400 / page.getViewport({ scale: 1 }).width);
       await doc.destroy();
       if (alive) setUrl(canvas.toDataURL("image/jpeg", 0.85));
-    })();
+    })().catch((e) => alive && setError(e));
     return () => {
       alive = false;
     };
@@ -116,6 +117,7 @@ export default function CropEditor({ files, onChange, t }: EditorProps<CropRect>
           </span>
         )}
       </div>
+      <EditorError error={error} t={t} />
       <p className="text-sm text-muted">{t.editors.cropHint}{isPdf && ` ${t.editors.cropPdfHint}`}</p>
       <div className="checker flex justify-center rounded-2xl p-4">
         <div ref={boxRef} className="relative inline-block touch-none select-none overflow-hidden">

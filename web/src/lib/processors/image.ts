@@ -1,5 +1,6 @@
 import type { CropRect } from "../editorTypes";
 import { baseName, type Options, type OutputFile } from "../files";
+import { AppError } from "../errors";
 import { canvasToBlob } from "../pdfjs";
 
 type Fmt = "png" | "jpg" | "webp";
@@ -195,7 +196,7 @@ export async function watermarkImage(files: File[], o: Options): Promise<OutputF
 }
 
 export async function blurImage(files: File[], o: Options, regions: CropRect[]): Promise<OutputFile[]> {
-  if (!regions?.length) throw new Error("Draw at least one area");
+  if (!regions?.length) throw new AppError("draw_area");
   const f = files[0];
   const img = await bitmap(f);
   const { c, ctx } = canvas(img.width, img.height);

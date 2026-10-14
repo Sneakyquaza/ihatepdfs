@@ -1,3 +1,10 @@
+# Bounded container logs (json-file grows forever otherwise)
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     build: ./api
@@ -8,12 +15,12 @@ services:
       RATE_LIMIT_REQUESTS: "60"
       RATE_LIMIT_WINDOW_S: "600"
       RATE_LIMIT_CONCURRENT: "3"
-      CORS_ORIGINS: "https://ihatepdfs.oryx3.fr,http://localhost:3000"
     tmpfs:
       - /tmp:size=4g
     mem_limit: 8g
     cpus: 6
     restart: unless-stopped
+    logging: *logging
 
   web:
     build:
@@ -25,3 +32,4 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    logging: *logging

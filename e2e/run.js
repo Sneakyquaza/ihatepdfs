@@ -115,6 +115,45 @@ const cases = [
     await p.close();
   }
   if (!only) {
+    // password-protected PDF in a browser-side tool must be refused with a pointer to the unlock tool
+    const fs = require("fs");
+    const form = new FormData();
+    form.append("file", new Blob([fs.readFileSync(F("a.pdf"))]), "a.pdf");
+    form.append("password", "secret");
+    const enc = await fetch(new URL("/api/protect-pdf", BASE), { method: "POST", body: form });
+    fs.writeFileSync(F("locked.pdf"), Buffer.from(await enc.arrayBuffer()));
+    const pe = await ctx.newPage();
+    await pe.goto(`${BASE}/rotate-pdf`);
+    await pe.setInputFiles('input[type="file"]', F("locked.pdf"));
+    await pe.locator("aside button").last().click();
+    const encOk = await pe.getByRole("link", { name: /Déverrouiller le PDF/ }).isVisible({ timeout: 10000 }).catch(() => false)
+      || await pe.getByRole("link", { name: /Déverrouiller le PDF/ }).waitFor({ timeout: 10000 }).then(() => true, () => false);
+    console.log(`${encOk ? "OK  " : "FAIL"} encrypted pdf      unlock link shown=${encOk}`);
+    if (!encOk) process.exitCode = 1;
+    // translated 404 and legal pages
+    const r404 = await pe.goto(`${BASE}/n-existe-pas/vraiment`);
+    const nfOk = r404.status() === 404 && await pe.getByRole("heading", { name: "Page introuvable" }).isVisible();
+    await pe.goto(`${BASE}/legal`);
+    const legalOk = await pe.getByText("Abou-Bakr Ghenaïm").first().isVisible();
+    await pe.goto(`${BASE}/privacy`);
+    const privOk = await pe.getByRole("heading", { name: "Vos fichiers" }).isVisible();
+    console.log(`${nfOk && legalOk && privOk ? "OK  " : "FAIL"} pages              404=${nfOk} legal=${legalOk} privacy=${privOk}`);
+    if (!(nfOk && legalOk && privOk)) process.exitCode = 1;
+    await pe.close();
+
+    // reaching remove-bg from the home grid must work too (its CSP differs, see next.config.ts)
+    const pn = await ctx.newPage();
+    await pn.goto(BASE);
+    await pn.getByRole("link", { name: /Supprimer l'arrière-plan/ }).first().click();
+    await pn.waitForURL(/remove-bg/);
+    await pn.setInputFiles('input[type="file"]', F("photo.png"));
+    const dlNav = pn.waitForEvent("download", { timeout: 120000 }).then(() => true, () => false);
+    await pn.locator("aside button").last().click();
+    const navOk = await dlNav;
+    console.log(`${navOk ? "OK  " : "FAIL"} remove-bg via home  downloaded=${navOk}`);
+    if (!navOk) process.exitCode = 1;
+    await pn.close();
+
     const p = await ctx.newPage();
     await p.goto(BASE);
     const recentOk = await p.getByRole("heading", { name: "Utilisés récemment" }).isVisible();

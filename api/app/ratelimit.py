@@ -20,11 +20,11 @@ def client_ip(request: Request) -> str:
     return request.headers.get("x-client-ip") or (request.client.host if request.client else "unknown")
 
 
-async def _too_many(request: Request, msg: str, retry_after: int) -> JSONResponse:
+async def _too_many(request: Request, code: str, retry_after: int) -> JSONResponse:
     # Drain the upload first: replying mid-upload resets the connection and the proxy turns it into a 500.
     async for _ in request.stream():
         pass
-    return JSONResponse({"detail": msg}, status_code=429, headers={"Retry-After": str(retry_after)})
+    return JSONResponse({"detail": {"code": code, "message": code}}, status_code=429, headers={"Retry-After": str(retry_after)})
 
 
 async def rate_limit_middleware(request: Request, call_next):
@@ -37,9 +37,9 @@ async def rate_limit_middleware(request: Request, call_next):
     while hits and now - hits[0] > WINDOW_S:
         hits.popleft()
     if len(hits) >= MAX_PER_WINDOW:
-        return await _too_many(request, "Too many requests, please try again later.", int(WINDOW_S - (now - hits[0])) + 1)
+        return await _too_many(request, "rate_limited", int(WINDOW_S - (now - hits[0])) + 1)
     if _active[ip] >= MAX_CONCURRENT_PER_IP:
-        return await _too_many(request, "Too many files processing at once, please wait.", 5)
+        return await _too_many(request, "too_many_concurrent", 5)
 
     hits.append(now)
     _active[ip] += 1

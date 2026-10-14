@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui \
       libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi8 \
       fonts-dejavu fonts-liberation fonts-noto-core \
+      fonts-crosextra-carlito fonts-crosextra-caladea \
       libgl1 libglib2.0-0 curl \
     && rm -rf /var/lib/apt/lists/*
 

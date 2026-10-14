@@ -4,7 +4,7 @@ import { Loader2, RotateCw, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { OrganizeItem } from "@/lib/editorTypes";
 import { openPdf, renderPage } from "@/lib/pdfjs";
-import { type EditorProps, uid } from "./shared";
+import { EditorError, type EditorProps, uid } from "./shared";
 
 interface Item extends OrganizeItem {
   id: string;
@@ -17,6 +17,7 @@ const PALETTE = ["#7c3aed", "#1c7ed6", "#2f9e44", "#f08c00", "#7048e8", "#0c8599
 export default function OrganizeEditor({ files, onChange, t }: EditorProps<OrganizeItem[]>) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown>(null);
   const dragId = useRef<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
@@ -39,7 +40,11 @@ export default function OrganizeEditor({ files, onChange, t }: EditorProps<Organ
         setItems(all);
         setLoading(false);
       }
-    })().catch(() => alive && setLoading(false));
+    })().catch((e) => {
+      if (!alive) return;
+      setError(e);
+      setLoading(false);
+    });
     return () => {
       alive = false;
     };
@@ -68,6 +73,7 @@ export default function OrganizeEditor({ files, onChange, t }: EditorProps<Organ
   return (
     <div>
       <p className="mb-4 text-sm text-muted">{t.editors.organizeHint}</p>
+      <EditorError error={error} t={t} />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">
         {items.map((it, idx) => (
           <div

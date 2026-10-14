@@ -1,12 +1,24 @@
 import { degrees, type PDFDict, PDFDocument, PDFFont, PDFName, PDFPage, rgb, StandardFonts } from "pdf-lib";
 import type { Box, CropRect, EditItem, OrganizeItem, SignPlacement } from "../editorTypes";
 import { baseName, hexToRgb01, type Options, type OutputFile, parsePages, parseRangeGroups } from "../files";
+import { AppError } from "../errors";
 import { canvasToBlob, openPdf, renderPage } from "../pdfjs";
 
 const PDF_MIME = "application/pdf";
 
-async function load(file: Blob): Promise<PDFDocument> {
-  return PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+/**
+ * pdf-lib cannot decrypt: with ignoreEncryption it "succeeds" but writes unreadable pages,
+ * so encrypted inputs are rejected up front (the UI points to the unlock tool).
+ */
+async function load(file: Blob, options: { updateMetadata?: boolean } = {}): Promise<PDFDocument> {
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true, ...options });
+  } catch {
+    throw new AppError("invalid_pdf", { name: (file as File).name ?? "" });
+  }
+  if (doc.isEncrypted) throw new AppError("encrypted", { name: (file as File).name ?? "" });
+  return doc;
 }
 
 async function save(doc: PDFDocument, name: string): Promise<OutputFile> {
@@ -90,7 +102,7 @@ export async function splitPdf(files: File[], o: Options): Promise<OutputFile[]>
     groups = [];
     for (let i = 0; i < total; i += n) groups.push(src.getPageIndices().slice(i, i + n));
   } else groups = parseRangeGroups(String(o.ranges), total);
-  if (!groups.length) throw new Error("No pages selected");
+  if (!groups.length) throw new AppError("no_pages_selected");
 
   const base = baseName(file.name);
   const outs: OutputFile[] = [];
@@ -105,7 +117,7 @@ export async function removePages(files: File[], o: Options): Promise<OutputFile
   const src = await load(files[0]);
   const toRemove = new Set(parsePages(String(o.pages), src.getPageCount()));
   const keep = src.getPageIndices().filter((i) => !toRemove.has(i));
-  if (!keep.length) throw new Error("Cannot remove every page");
+  if (!keep.length) throw new AppError("cannot_remove_all");
   return [await save(await copyPagesTo(src, keep), `${baseName(files[0].name)}_edited.pdf`)];
 }
 
@@ -116,8 +128,8 @@ export async function extractPages(files: File[], o: Options): Promise<OutputFil
 }
 
 export async function organizePdf(files: File[], _o: Options, items: OrganizeItem[]): Promise<OutputFile[]> {
-  if (!items?.length) throw new Error("No pages left");
-  const srcs = await Promise.all(files.map(load));
+  if (!items?.length) throw new AppError("no_pages_selected");
+  const srcs = await Promise.all(files.map((f) => load(f)));
   const out = await PDFDocument.create();
   for (const it of items) {
     const [p] = await out.copyPages(srcs[it.file], [it.page]);
@@ -202,7 +214,7 @@ export async function watermarkPdf(files: File[], o: Options): Promise<OutputFil
 }
 
 export async function signPdf(files: File[], _o: Options, placements: SignPlacement[]): Promise<OutputFile[]> {
-  if (!placements?.length) throw new Error("Place your signature on a page first");
+  if (!placements?.length) throw new AppError("place_signature");
   const doc = await load(files[0]);
   const cache = new Map<string, Awaited<ReturnType<PDFDocument["embedPng"]>>>();
   for (const s of placements) {
@@ -219,7 +231,7 @@ export async function signPdf(files: File[], _o: Options, placements: SignPlacem
 }
 
 export async function editPdf(files: File[], _o: Options, items: EditItem[]): Promise<OutputFile[]> {
-  if (!items?.length) throw new Error("Nothing to apply");
+  if (!items?.length) throw new AppError("nothing_to_apply");
   const doc = await load(files[0]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   for (const it of items) {
@@ -377,7 +389,7 @@ export async function editMetadata(files: File[], o: Options): Promise<OutputFil
   const outs: OutputFile[] = [];
   for (const f of files) {
     // updateMetadata:false stops pdf-lib from stamping its own Producer/ModDate
-    const doc = await PDFDocument.load(await f.arrayBuffer(), { ignoreEncryption: true, updateMetadata: false });
+    const doc = await load(f, { updateMetadata: false });
     if (o.removeAll) {
       const info = (doc as unknown as { getInfoDict(): PDFDict }).getInfoDict();
       for (const key of info.keys()) info.delete(key);

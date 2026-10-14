@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Dict } from "@/i18n";
+import { AppError } from "@/lib/errors";
+import { fmt } from "@/i18n";
 import { openPdf } from "@/lib/pdfjs";
 
 export interface EditorProps<T> {
@@ -14,7 +16,7 @@ export interface EditorProps<T> {
 
 export function usePdfDoc(file: File | undefined) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<unknown>(null);
   useEffect(() => {
     if (!file) return;
     let alive = true;
@@ -25,7 +27,7 @@ export function usePdfDoc(file: File | undefined) {
         if (alive) setDoc(d);
         else d.destroy();
       })
-      .catch((e) => alive && setError(String(e?.message ?? e)));
+      .catch((e) => alive && setError(e));
     return () => {
       alive = false;
       opened?.destroy();
@@ -33,6 +35,14 @@ export function usePdfDoc(file: File | undefined) {
     };
   }, [file]);
   return { doc, error };
+}
+
+/** Inline error for editors that failed to open their file (e.g. password-protected PDF). */
+export function EditorError({ error, t }: { error: unknown; t: Dict }) {
+  if (!error) return null;
+  const errors = t.errors as Record<string, string>;
+  const text = error instanceof AppError && errors[error.code] ? fmt(errors[error.code], error.params) : errors.processing_failed;
+  return <p className="rounded-xl bg-red-50 p-4 text-sm font-medium text-red-700">{text}</p>;
 }
 
 export function useElementWidth<T extends HTMLElement>() {

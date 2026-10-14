@@ -1,3 +1,5 @@
+import { AppError } from "./errors";
+
 export interface OutputFile {
   name: string;
   blob: Blob;
@@ -38,7 +40,7 @@ export function parsePages(spec: string, total: number): number[] {
       }
     }
   }
-  if (!out.length) throw new Error(`No valid pages in "${spec}" (document has ${total} pages)`);
+  if (!out.length) throw new AppError("invalid_pages", { spec, total });
   return out;
 }
 
@@ -50,7 +52,7 @@ export function parseRangeGroups(spec: string, total: number): number[][] {
     .filter(Boolean)
     .map((seg) => {
       const m = seg.match(/^(\d*)\s*(?:-\s*(\d*))?$/);
-      if (!m) throw new Error(`Invalid range "${seg}"`);
+      if (!m) throw new AppError("invalid_range", { range: seg });
       const isRange = seg.includes("-");
       const start = m[1] ? parseInt(m[1], 10) : 1;
       const end = isRange ? (m[2] ? parseInt(m[2], 10) : total) : start;

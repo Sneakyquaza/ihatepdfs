@@ -11,6 +11,7 @@ import type { EditorData } from "@/lib/editorTypes";
 import { downloadBlob, extOf, formatBytes, type Options, type OutputFile, zipOutputs } from "@/lib/files";
 import { pushRecent } from "@/lib/prefs";
 import { runTool } from "@/lib/processors";
+import { AppError } from "@/lib/errors";
 import { defaultOptions, TOOL_MAP } from "@/lib/tools";
 import { FileThumb } from "./FileThumb";
 import { OptionsForm } from "./OptionsForm";
@@ -47,12 +48,12 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
   const minFiles = tool.minFiles ?? 1;
 
   const [files, setFiles] = useState<File[]>([]);
-  const [opts, setOpts] = useState<Options>(() => defaultOptions(tool));
+  const [opts, setOpts] = useState<Options>(() => defaultOptions(tool, t.defaults));
   const [editorData, setEditorData] = useState<EditorData>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState("");
   const [outputs, setOutputs] = useState<OutputFile[]>([]);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<{ code: string; text: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -66,7 +67,7 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
       });
       setEditorData(null);
       setStatus("idle");
-      setError("");
+      setError(null);
     },
     [tool],
   );
@@ -121,7 +122,7 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
     setOutputs([]);
     setEditorData(null);
     setStatus("idle");
-    setError("");
+    setError(null);
   };
 
   const validation = (() => {
@@ -134,7 +135,7 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
   const run = async () => {
     setStatus("processing");
     setProgress("");
-    setError("");
+    setError(null);
     try {
       const out = await runTool(tool, files, opts, { editorData, onProgress: setProgress });
       setOutputs(out);
@@ -143,8 +144,9 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
       if (out.length === 1) downloadBlob(out[0].blob, out[0].name);
     } catch (e) {
       console.error(e);
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg === "HTTP_429" ? t.runner.tooMany : msg === "HTTP_503" ? t.runner.busy : msg);
+      const errors = t.errors as Record<string, string>;
+      if (e instanceof AppError && errors[e.code]) setError({ code: e.code, text: fmt(errors[e.code], e.params) });
+      else setError({ code: "processing_failed", text: errors.processing_failed });
       setStatus("error");
     }
   };
@@ -324,7 +326,12 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
                 <p className="font-bold">{t.runner.error}</p>
-                <p className="break-words">{error}</p>
+                <p className="break-words">{error?.text}</p>
+                {error?.code === "encrypted" && tool.id !== "unlock-pdf" && (
+                  <Link href={`/${locale}/unlock-pdf`} className="mt-2 inline-block font-bold underline">
+                    {t.errors.unlockCta} →
+                  </Link>
+                )}
               </div>
             </div>
           )}

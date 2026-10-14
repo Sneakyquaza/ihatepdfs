@@ -1,4 +1,5 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { AppError } from "./errors";
 
 type PdfJs = typeof import("pdfjs-dist");
 let pdfjsPromise: Promise<PdfJs> | null = null;
@@ -17,7 +18,12 @@ export async function openPdf(file: Blob): Promise<PDFDocumentProxy> {
   const pdfjs = await getPdfjs();
   // pdf.js transfers (detaches) the buffer, so always hand it a fresh copy.
   const data = new Uint8Array(await file.arrayBuffer());
-  return pdfjs.getDocument({ data }).promise;
+  try {
+    return await pdfjs.getDocument({ data }).promise;
+  } catch (e) {
+    const name = (file as File).name ?? "";
+    throw new AppError((e as Error)?.name === "PasswordException" ? "encrypted" : "invalid_pdf", { name });
+  }
 }
 
 /** Render a 1-based page to a canvas. `scale` 1 = 72 DPI. Extra rotation in degrees is added to the page's own. */

@@ -62,17 +62,25 @@ Home-page favorites and "recently used" (`lib/prefs.ts`) live in `localStorage` 
 
 `organize`, `sign`, `edit`, `crop` (images and PDFs — a PDF crop is drawn on page 1 and applied to all pages), `redact`, `regions` (in `components/editors/`) emit `EditorData` (`lib/editorTypes.ts`) via `onChange`; client processors receive it as `ctx.editorData`, server tools get it as a JSON form field named `editor`. `BoxDrawOverlay` (`editors/shared.tsx`) is the reusable draw/move/resize-rectangles layer. Sign/edit boxes are stored as **fractions of the page as displayed** (rotation applied, top-left origin). `placeBox()` in `processors/pdf.ts` converts them to pdf-lib coordinates for pages rotated 0/90/180/270 and uses the CropBox — reuse it for anything drawn onto pages. Edit-PDF text baseline is placed at 0.95em below each line top to match the editor's CSS `line-height: 1.2`; change both together. Standard PDF fonts are WinAnsi only: `safeText()` drops unencodable characters instead of throwing.
 
+pdf-lib cannot decrypt: `load()` in `processors/pdf.ts` rejects encrypted PDFs (`encrypted` → UI links to unlock-pdf) instead of silently writing blank pages; `openPdf()` maps pdf.js `PasswordException` the same way.
+
 pdf.js (`lib/pdfjs.ts`) transfers/detaches the buffer it is given — always pass a fresh copy (`openPdf` does). Its worker is served from `public/pdf.worker.min.mjs` (copied by `scripts/copy-pdf-worker.mjs`, gitignored).
 
 ### API conventions (`api/app/`)
 
-Every endpoint wraps its work in `handle(work)`: creates a per-request `Workspace` temp dir, enforces the global `HEAVY` semaphore and `MAX_QUEUE` (503), and cleans up on error; `send()` removes the dir after the response is streamed. Uploads go through `save_upload()` (extension allow-list, size cap). Shell tools run via `run()` (thread + timeout, stderr tail in the error). Errors are `HTTPException` with a string `detail`, which the UI displays verbatim — except 429/503, which the frontend maps to localized messages (`HTTP_429`/`HTTP_503` sentinel in `processors/index.ts`).
+Every endpoint wraps its work in `handle(work)`: creates a per-request `Workspace` temp dir, enforces the global `HEAVY` semaphore and `MAX_QUEUE` (503), and cleans up on error; `send()` removes the dir after the response is streamed. Uploads go through `save_upload()` (extension allow-list, size cap). Shell tools run via `run()` (thread + timeout, stderr tail in the error). Errors are raised as `ApiError(status, code, message, **params)` (`errors.py`) → `{"detail": {"code", "message", "params"}}`; global handlers turn `pikepdf.PasswordError` into `encrypted`, broken PDFs into `invalid_pdf` and anything else into `processing_failed`. The frontend never shows API text: `post()` throws `AppError(code, params)` (`lib/errors.ts`) and the UI renders `t.errors[code]` — add a translation in both dicts for every new code. Client processors throw `AppError` too.
 
 `ratelimit.py`: per-IP sliding window + per-IP concurrency. The client IP comes from `X-Client-IP`, which Apache **sets (overwrites)** — don't switch to `X-Forwarded-For`. Rejections drain the request body first; replying mid-upload makes the Next proxy return a 500.
 
 Redaction (`redact.py`) must stay server-side: PyMuPDF `apply_redactions` removes the text/pixels under each area, then `doc.scrub()` + `garbage=4` drop metadata, hidden text and orphaned objects. Areas arrive as display fractions and are mapped with `page.derotation_matrix`; text/regex matches are found on the page's words joined by spaces (a match redacts every word it touches). Returns 400 when nothing matched.
 
 HTML→PDF uses a WeasyPrint ≥70 `URLFetcher` subclass that only allows `data:` and public http(s) hosts and re-checks every redirect hop (SSRF guard, also blocks `file://` from uploaded HTML).
+
+### Security headers
+
+Set in `web/next.config.ts` (not Apache): CSP, HSTS, etc. The in-browser AI needs `'wasm-unsafe-eval'` and `blob:` scripts everywhere, and `/:locale/remove-bg` alone also gets `'unsafe-eval'` (protobufjs codegen). Because client-side navigation keeps the previous page's CSP, links to such pages must be plain `<a>` (see `HARD_NAV` in `ToolGrid.tsx`). Run the e2e suite after touching the CSP — failures only show up in the browser.
+
+Legal notice / privacy texts live in `web/src/i18n/legal.ts`; keep the privacy page truthful when adding anything that contacts a third party or stores data.
 
 ### Docker gotchas
 

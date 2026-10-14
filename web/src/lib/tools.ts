@@ -136,7 +136,7 @@ export const TOOLS: Tool[] = [
   {
     id: "watermark-pdf", category: "edit", icon: "Stamp", color: C.indigo, accept: PDF, multiple: true, mode: "client",
     options: [
-      { type: "text", key: "text", default: "CONFIDENTIEL" },
+      { type: "text", key: "text", default: "CONFIDENTIAL" },
       { type: "number", key: "fontSize", min: 8, max: 200, default: 60 },
       { type: "color", key: "color", default: "#e03131" },
       { type: "range", key: "opacity", min: 0.05, max: 1, step: 0.05, default: 0.3 },
@@ -231,7 +231,7 @@ export const TOOLS: Tool[] = [
   {
     id: "watermark-image", category: "image", icon: "Droplets", color: C.teal, accept: IMG, multiple: true, mode: "client",
     options: [
-      { type: "text", key: "text", default: "© Mon site" },
+      { type: "text", key: "text", default: "© My site" },
       { type: "range", key: "sizePct", min: 2, max: 30, step: 1, default: 6, unit: "%" },
       { type: "color", key: "color", default: "#ffffff" },
       { type: "range", key: "opacity", min: 0.05, max: 1, step: 0.05, default: 0.5 },
@@ -242,6 +242,7 @@ export const TOOLS: Tool[] = [
 
 export const TOOL_MAP = Object.fromEntries(TOOLS.map((t) => [t.id, t])) as Record<string, Tool>;
 
-export function defaultOptions(tool: Tool): Record<string, string | number | boolean> {
-  return Object.fromEntries((tool.options ?? []).map((o) => [o.key, o.default]));
+/** Option defaults; `localized` (from `t.defaults`, keyed "<tool>.<option>") overrides language-dependent texts. */
+export function defaultOptions(tool: Tool, localized: Record<string, string> = {}): Record<string, string | number | boolean> {
+  return Object.fromEntries((tool.options ?? []).map((o) => [o.key, localized[`${tool.id}.${o.key}`] ?? o.default]));
 }

@@ -1,4 +1,5 @@
 import type { EditorData } from "../editorTypes";
+import { AppError } from "../errors";
 import { baseName, type Options, type OutputFile } from "../files";
 import type { Tool } from "../tools";
 
@@ -49,17 +50,23 @@ function filenameFrom(res: Response, fallback: string): string {
 }
 
 async function post(endpoint: string, form: FormData, fallbackName: string): Promise<OutputFile> {
-  const res = await fetch(`/api/${endpoint}`, { method: "POST", body: form });
-  if (res.status === 429 || res.status === 503) throw new Error(`HTTP_${res.status}`); // localized by the UI
+  let res: Response;
+  try {
+    res = await fetch(`/api/${endpoint}`, { method: "POST", body: form });
+  } catch {
+    throw new AppError("network");
+  }
   if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
+    // API errors are {detail: {code, message, params?}}; anything else (proxy page, crash) gets a generic code
+    let detail: { code?: string; message?: string; params?: Record<string, string | number> } | undefined;
     try {
       const body = await res.json();
-      if (body?.detail) msg = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      detail = typeof body?.detail === "object" ? body.detail : undefined;
     } catch {
       /* non-JSON error body */
     }
-    throw new Error(msg);
+    const fallback = res.status === 413 ? "file_too_large" : res.status === 429 ? "rate_limited" : res.status === 503 ? "busy" : res.status === 504 ? "timeout" : "processing_failed";
+    throw new AppError(detail?.code ?? fallback, detail?.params ?? {}, detail?.message);
   }
   return { name: filenameFrom(res, fallbackName), blob: await res.blob() };
 }
@@ -93,6 +100,6 @@ async function runServer(tool: Tool, files: File[], opts: Options, ctx: RunConte
 export async function runTool(tool: Tool, files: File[], opts: Options, ctx: RunContext): Promise<OutputFile[]> {
   if (tool.mode === "server") return runServer(tool, files, opts, ctx);
   const proc = CLIENT[tool.id];
-  if (!proc) throw new Error(`No processor for ${tool.id}`);
+  if (!proc) throw new AppError("processing_failed", {}, `No processor for ${tool.id}`);
   return proc(files, opts, ctx);
 }

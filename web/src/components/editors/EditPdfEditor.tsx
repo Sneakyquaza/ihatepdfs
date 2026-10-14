@@ -3,7 +3,7 @@
 import { Eraser, Highlighter, MousePointer2, Square, Trash2, Type } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { EditItem } from "@/lib/editorTypes";
-import { type EditorProps, PageNav, PdfPage, type PageGeometry, startBoxDrag, uid, usePdfDoc } from "./shared";
+import { EditorError, type EditorProps, PageNav, PdfPage, type PageGeometry, startBoxDrag, uid, usePdfDoc } from "./shared";
 
 type Kind = EditItem["kind"];
 type Item = EditItem & { id: string };
@@ -22,7 +22,7 @@ function textBox(text: string, size: number, g: PageGeometry) {
 }
 
 export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditItem[]>) {
-  const { doc } = usePdfDoc(files[0]);
+  const { doc, error } = usePdfDoc(files[0]);
   const [page, setPage] = useState(0);
   const [tool, setTool] = useState<ToolKind>("text");
   const [color, setColor] = useState("#e03131");
@@ -191,6 +191,7 @@ export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditIt
       </div>
 
       <div className="space-y-3 rounded-2xl bg-canvas p-4">
+        <EditorError error={error} t={t} />
         {doc && <PageNav page={page} count={doc.numPages} setPage={(p) => { setPage(p); setSelected(null); }} t={t} />}
         {doc && (
           <PdfPage doc={doc} pageIndex={page}>

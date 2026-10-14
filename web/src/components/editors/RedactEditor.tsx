@@ -3,12 +3,12 @@
 import { Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Box } from "@/lib/editorTypes";
-import { BoxDrawOverlay, type DrawnBox, type EditorProps, PageNav, PdfPage, usePdfDoc } from "./shared";
+import { BoxDrawOverlay, type DrawnBox, EditorError, type EditorProps, PageNav, PdfPage, usePdfDoc } from "./shared";
 
 type PageBox = DrawnBox & { page: number };
 
 export default function RedactEditor({ files, onChange, t }: EditorProps<Box[]>) {
-  const { doc } = usePdfDoc(files[0]);
+  const { doc, error } = usePdfDoc(files[0]);
   const [page, setPage] = useState(0);
   const [boxes, setBoxes] = useState<PageBox[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -48,6 +48,7 @@ export default function RedactEditor({ files, onChange, t }: EditorProps<Box[]>)
         )}
       </div>
       <div className="space-y-3 rounded-2xl bg-canvas p-4">
+        <EditorError error={error} t={t} />
         {doc && <PageNav page={page} count={doc.numPages} setPage={(p) => { setPage(p); setSelected(null); }} t={t} />}
         {doc && (
           <PdfPage doc={doc} pageIndex={page}>

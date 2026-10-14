@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SignPlacement } from "@/lib/editorTypes";
-import { type EditorProps, PageNav, PdfPage, startBoxDrag, uid, usePdfDoc } from "./shared";
+import { EditorError, type EditorProps, PageNav, PdfPage, startBoxDrag, uid, usePdfDoc } from "./shared";
 
 type Mode = "draw" | "type" | "upload";
 interface Placed extends SignPlacement {
@@ -40,7 +40,7 @@ function trimCanvas(src: HTMLCanvasElement): { url: string; aspect: number } | n
 }
 
 export default function SignEditor({ files, onChange, t }: EditorProps<SignPlacement[]>) {
-  const { doc } = usePdfDoc(files[0]);
+  const { doc, error } = usePdfDoc(files[0]);
   const [page, setPage] = useState(0);
   const [mode, setMode] = useState<Mode>("draw");
   const [ink, setInk] = useState(INK[0]);
@@ -203,6 +203,7 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
       </div>
 
       <div className="min-w-0 space-y-3 rounded-2xl bg-canvas p-4">
+        <EditorError error={error} t={t} />
         {doc && <PageNav page={page} count={doc.numPages} setPage={setPage} t={t} />}
         {doc && (
           <PdfPage doc={doc} pageIndex={page}>
