@@ -12,9 +12,11 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
+from .ratelimit import rate_limit_middleware
 from .util import Workspace, assert_public_url, run, save_upload, send, stem_of
 
-app = FastAPI(title="iLovePDF-like API")
+app = FastAPI(title="iHatePDFs API", docs_url=None, redoc_url=None, openapi_url=None)
+app.middleware("http")(rate_limit_middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
@@ -28,18 +30,30 @@ OFFICE = {".doc", ".docx", ".odt", ".rtf", ".txt", ".ppt", ".pptx", ".odp", ".xl
 IMAGES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 OCR_LANGS = {"eng", "fra", "deu", "spa", "ita", "por", "nld"}
 
-# Limit concurrent heavy jobs so one burst can't exhaust CPU/RAM.
+# Limit concurrent heavy jobs so one burst can't exhaust CPU/RAM, and cap the queue behind them.
 HEAVY = asyncio.Semaphore(int(os.getenv("MAX_HEAVY_JOBS", "2")))
+MAX_QUEUE = int(os.getenv("MAX_QUEUE", "20"))
+_queued = 0
 
 
 async def handle(work: Callable[[Workspace], Awaitable[Response]]) -> Response:
+    global _queued
+    if _queued >= MAX_QUEUE:
+        raise HTTPException(503, "Server busy, please retry in a minute.", headers={"Retry-After": "30"})
     ws = Workspace()
+    _queued += 1
+    waiting = True
     try:
         async with HEAVY:
+            _queued -= 1
+            waiting = False
             return await work(ws)
     except BaseException:
         ws.cleanup()
         raise
+    finally:
+        if waiting:  # cancelled (client gone) before getting a slot
+            _queued -= 1
 
 
 @app.get("/api/health")

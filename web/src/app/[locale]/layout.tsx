@@ -40,7 +40,12 @@ export default async function LocaleLayout({
         <footer className="mt-24 border-t border-black/5 bg-white">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-8 text-sm text-muted sm:flex-row sm:justify-between">
             <p>{t.footer.tagline}</p>
-            <p>© {new Date().getFullYear()} PDFKit. {t.footer.rights}</p>
+            <p className="flex flex-wrap gap-x-4">
+              <a href="https://github.com/Sneakyquaza/ihatepdfs" className="underline hover:text-ink" rel="noopener">
+                {t.footer.source}
+              </a>
+              <span>© {new Date().getFullYear()} iHatePDFs. {t.footer.rights}</span>
+            </p>
           </div>
         </footer>
       </body>

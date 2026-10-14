@@ -1,4 +1,4 @@
-# PDFKit — outils PDF & image (type iLovePDF)
+# iHatePDFs — outils PDF & image (type iLovePDF)
 
 34 outils, FR/EN. Architecture hybride : le léger tourne dans le navigateur, le lourd sur une API Python.
 
@@ -35,10 +35,11 @@ cd web && npm install && npm run dev
 
 ## Config API (env)
 
-`MAX_UPLOAD_MB` (100), `MAX_HEAVY_JOBS` (2 jobs lourds simultanés par worker), `CORS_ORIGINS`.
+`MAX_UPLOAD_MB` (100), `MAX_HEAVY_JOBS` (4 jobs lourds simultanés), `MAX_QUEUE` (20 en attente, au-delà → 503),
+`RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_S` (60 requêtes / 10 min par IP → 429), `RATE_LIMIT_CONCURRENT` (3 par IP), `CORS_ORIGINS`.
+L'IP client vient de l'en-tête `X-Client-IP` posé (écrasé) par Apache : le client ne peut pas le falsifier.
 Les fichiers serveur vivent dans un dossier temporaire supprimé après la réponse. HTML→PDF bloque les URL vers des IP privées (y compris via redirection).
 
-## ⚠️ Licences
+## Licence
 
-- `@imgly/background-removal` (remove-bg) est **AGPL-3.0** : en production publique, il faut publier le code source du site ou acheter leur licence commerciale — ou basculer vers `rembg` (MIT) côté serveur.
-- PyMuPDF et Ghostscript sont aussi **AGPL** (licences commerciales disponibles chez Artifex).
+AGPL-3.0 (voir `LICENSE`) — imposée par `@imgly/background-removal`, PyMuPDF et Ghostscript. Le code source est public et lié depuis le pied de page du site, ce qui satisfait l'obligation de l'AGPL pour un service en ligne : toute modification déployée doit être poussée sur ce dépôt.

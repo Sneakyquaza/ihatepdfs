@@ -3,10 +3,16 @@ services:
     build: ./api
     environment:
       MAX_UPLOAD_MB: "100"
-      MAX_HEAVY_JOBS: "2"
+      MAX_HEAVY_JOBS: "4"
+      MAX_QUEUE: "20"
+      RATE_LIMIT_REQUESTS: "60"
+      RATE_LIMIT_WINDOW_S: "600"
+      RATE_LIMIT_CONCURRENT: "3"
       CORS_ORIGINS: "https://ihatepdfs.oryx3.fr,http://localhost:3000"
     tmpfs:
-      - /tmp:size=2g
+      - /tmp:size=4g
+    mem_limit: 8g
+    cpus: 6
     restart: unless-stopped
 
   web:

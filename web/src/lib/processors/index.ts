@@ -45,6 +45,7 @@ function filenameFrom(res: Response, fallback: string): string {
 
 async function post(endpoint: string, form: FormData, fallbackName: string): Promise<OutputFile> {
   const res = await fetch(`/api/${endpoint}`, { method: "POST", body: form });
+  if (res.status === 429 || res.status === 503) throw new Error(`HTTP_${res.status}`); // localized by the UI
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
     try {

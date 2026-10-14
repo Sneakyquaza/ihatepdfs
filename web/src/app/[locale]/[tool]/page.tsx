@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!isLocale(locale) || !TOOL_MAP[tool]) return {};
   const { name, desc } = getDict(locale).tools[tool as keyof ReturnType<typeof getDict>["tools"]];
   return {
-    title: `${name} — PDFKit`,
+    title: `${name} — iHatePDFs`,
     description: desc,
     alternates: { languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}/${tool}`])) },
   };

@@ -1,6 +1,6 @@
 export const fr = {
   meta: {
-    title: "PDFKit — Tous les outils PDF et image en ligne, gratuits",
+    title: "iHatePDFs — Tous les outils PDF et image en ligne, gratuits",
     description:
       "Fusionner, diviser, compresser, convertir, signer et éditer vos PDF. Supprimer l'arrière-plan, redimensionner et agrandir vos images. Gratuit et rapide.",
   },
@@ -17,7 +17,7 @@ export const fr = {
     all: "Tout",
     search: "Rechercher un outil…",
     noResult: "Aucun outil trouvé.",
-    whyTitle: "Pourquoi PDFKit ?",
+    whyTitle: "Pourquoi iHatePDFs\u00a0?",
     why: [
       { title: "Privé par défaut", text: "La plupart des outils tournent directement dans votre navigateur : vos fichiers ne quittent pas votre appareil." },
       { title: "Rapide", text: "Pas d'attente ni de file : le traitement local est instantané, le serveur prend le relais pour les tâches lourdes." },
@@ -90,6 +90,8 @@ export const fr = {
     moveDown: "Descendre",
     options: "Options",
     firstRunModel: "Premier lancement : téléchargement du modèle IA (~40 Mo), mis en cache ensuite.",
+    tooMany: "Trop de demandes depuis votre connexion. Réessayez dans quelques minutes.",
+    busy: "Serveur saturé, réessayez dans une minute.",
     or: "ou",
   },
   options: {
@@ -201,6 +203,7 @@ export const fr = {
   },
   footer: {
     tagline: "Outils PDF et image gratuits, rapides et respectueux de la vie privée.",
+    source: "Code source (AGPL-3.0)",
     rights: "Tous droits réservés.",
   },
 };

@@ -139,7 +139,8 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
       if (out.length === 1) downloadBlob(out[0].blob, out[0].name);
     } catch (e) {
       console.error(e);
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg === "HTTP_429" ? t.runner.tooMany : msg === "HTTP_503" ? t.runner.busy : msg);
       setStatus("error");
     }
   };

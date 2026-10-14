@@ -2,7 +2,7 @@ import type { Dict } from "./fr";
 
 export const en: Dict = {
   meta: {
-    title: "PDFKit — Every PDF and image tool you need, free online",
+    title: "iHatePDFs — Every PDF and image tool you need, free online",
     description:
       "Merge, split, compress, convert, sign and edit PDFs. Remove image backgrounds, resize and upscale images. Free and fast.",
   },
@@ -19,7 +19,7 @@ export const en: Dict = {
     all: "All",
     search: "Search a tool…",
     noResult: "No tool found.",
-    whyTitle: "Why PDFKit?",
+    whyTitle: "Why iHatePDFs?",
     why: [
       { title: "Private by default", text: "Most tools run right in your browser: your files never leave your device." },
       { title: "Fast", text: "No queues: local processing is instant, and the server takes over for heavy jobs." },
@@ -92,6 +92,8 @@ export const en: Dict = {
     moveDown: "Move down",
     options: "Options",
     firstRunModel: "First run: downloading the AI model (~40 MB), cached afterwards.",
+    tooMany: "Too many requests from your connection. Please try again in a few minutes.",
+    busy: "Server busy, please try again in a minute.",
     or: "or",
   },
   options: {
@@ -203,6 +205,7 @@ export const en: Dict = {
   },
   footer: {
     tagline: "Free, fast and privacy-friendly PDF and image tools.",
+    source: "Source code (AGPL-3.0)",
     rights: "All rights reserved.",
   },
 };
