@@ -2,6 +2,7 @@
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
+  --font-hand: var(--font-caveat);
   --color-brand: #e5322d;
   --color-brand-dark: #c4211c;
   --color-ink: #33333b;

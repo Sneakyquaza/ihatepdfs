@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Caveat, Geist } from "next/font/google";
 import { notFound } from "next/navigation";
 import { Header } from "@/components/Header";
 import { getDict, isLocale, LOCALES } from "@/i18n";
 import "../globals.css";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const caveat = Caveat({ variable: "--font-caveat", subsets: ["latin"], weight: "700" });
 
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
@@ -34,7 +35,7 @@ export default async function LocaleLayout({
   const t = getDict(locale);
   return (
     <html lang={locale}>
-      <body className={`${geist.variable} min-h-screen font-sans antialiased`}>
+      <body className={`${geist.variable} ${caveat.variable} min-h-screen font-sans antialiased`}>
         <Header locale={locale} t={t} />
         <main>{children}</main>
         <footer className="mt-24 border-t border-black/5 bg-white">
