@@ -3,6 +3,7 @@
 import asyncio
 import difflib
 import os
+import re
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -13,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from .ratelimit import rate_limit_middleware
+from .redact import PRESETS, parse_boxes, redact
 from .util import Workspace, assert_public_url, run, save_upload, send, stem_of
 
 app = FastAPI(title="iHatePDFs API", docs_url=None, redoc_url=None, openapi_url=None)
@@ -428,6 +430,84 @@ async def upscale_image(file: UploadFile = File(...), scale: int = Form(2)):
 
         await asyncio.to_thread(_upscale)
         return send(out, f"{stem_of(file)}_x{scale}.png", ws)
+
+    return await handle(work)
+
+
+# ---------- Redaction / cleanup ----------
+
+@app.post("/api/redact-pdf")
+async def redact_pdf(
+    file: UploadFile = File(...),
+    editor: str | None = Form(None),
+    terms: str = Form(""),
+    redactEmails: bool = Form(False),
+    redactPhones: bool = Form(False),
+    redactIban: bool = Form(False),
+    redactCards: bool = Form(False),
+):
+    boxes = parse_boxes(editor)
+    term_list = [t.strip() for t in re.split(r"[,\n]", terms) if t.strip()][:200]
+    flags = {"emails": redactEmails, "phones": redactPhones, "iban": redactIban, "cards": redactCards}
+    presets = [p for p, on in flags.items() if on and p in PRESETS]
+
+    async def work(ws: Workspace):
+        src = await save_upload(file, ws, PDF)
+        out = ws.file(".pdf")
+        count = await asyncio.to_thread(redact, str(src), str(out), boxes, term_list, presets)
+        resp = send(out, f"{stem_of(file)}_redacted.pdf", ws)
+        resp.headers["X-Redaction-Count"] = str(count)
+        return resp
+
+    return await handle(work)
+
+
+@app.post("/api/flatten-pdf")
+async def flatten_pdf(file: UploadFile = File(...)):
+    async def work(ws: Workspace):
+        src = await save_upload(file, ws, PDF)
+        out = ws.file(".pdf")
+
+        def _flatten():
+            with pikepdf.open(src) as pdf:
+                # form fields need appearance streams before they can be burnt into the page
+                pdf.generate_appearance_streams()
+                pdf.flatten_annotations("all")
+                if "/AcroForm" in pdf.Root:
+                    del pdf.Root.AcroForm
+                pdf.save(out)
+
+        await asyncio.to_thread(_flatten)
+        return send(out, f"{stem_of(file)}_flat.pdf", ws)
+
+    return await handle(work)
+
+
+@app.post("/api/grayscale-pdf")
+async def grayscale_pdf(file: UploadFile = File(...)):
+    async def work(ws: Workspace):
+        src = await save_upload(file, ws, PDF)
+        out = ws.file(".pdf")
+        await run([
+            "gs", "-sDEVICE=pdfwrite", "-sColorConversionStrategy=Gray", "-dProcessColorModel=/DeviceGray",
+            "-dOverrideICC", "-dNOPAUSE", "-dQUIET", "-dBATCH", "-dSAFER", f"-sOutputFile={out}", str(src),
+        ])
+        return send(out, f"{stem_of(file)}_gray.pdf", ws)
+
+    return await handle(work)
+
+
+@app.post("/api/image-to-text")
+async def image_to_text(file: UploadFile = File(...), lang: str = Form("eng")):
+    langs = [l for l in lang.split("+") if l]
+    if not langs or any(l not in OCR_LANGS for l in langs):
+        raise HTTPException(400, f"Invalid language. Allowed: {', '.join(sorted(OCR_LANGS))}")
+
+    async def work(ws: Workspace):
+        src = await save_upload(file, ws, IMAGES)
+        base = ws.file("")
+        await run(["tesseract", str(src), str(base), "-l", "+".join(langs)], timeout=180)
+        return send(base.with_suffix(".txt"), f"{stem_of(file)}.txt", ws)
 
     return await handle(work)
 

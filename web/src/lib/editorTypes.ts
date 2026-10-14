@@ -32,4 +32,4 @@ export interface CropRect {
   h: number;
 }
 
-export type EditorData = OrganizeItem[] | SignPlacement[] | EditItem[] | CropRect | null;
+export type EditorData = OrganizeItem[] | SignPlacement[] | EditItem[] | Box[] | CropRect | CropRect[] | null;

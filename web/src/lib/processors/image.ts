@@ -193,3 +193,40 @@ export async function watermarkImage(files: File[], o: Options): Promise<OutputF
   }
   return outs;
 }
+
+export async function blurImage(files: File[], o: Options, regions: CropRect[]): Promise<OutputFile[]> {
+  if (!regions?.length) throw new Error("Draw at least one area");
+  const f = files[0];
+  const img = await bitmap(f);
+  const { c, ctx } = canvas(img.width, img.height);
+  ctx.drawImage(img, 0, 0);
+  const supportsFilter = typeof ctx.filter === "string";
+  for (const r of regions) {
+    const x = Math.round(r.x * c.width), y = Math.round(r.y * c.height);
+    const w = Math.max(1, Math.round(r.w * c.width)), h = Math.max(1, Math.round(r.h * c.height));
+    if (o.effect === "black") {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(x, y, w, h);
+    } else if (o.effect === "blur" && supportsFilter) {
+      // blur a padded copy so edges don't pull in transparent pixels
+      const pad = Math.ceil(Math.max(w, h) / 6);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      ctx.filter = `blur(${Math.max(6, Math.round(Math.max(w, h) / 12))}px)`;
+      ctx.drawImage(c, x - pad, y - pad, w + 2 * pad, h + 2 * pad, x - pad, y - pad, w + 2 * pad, h + 2 * pad);
+      ctx.restore();
+    } else {
+      // pixelate: shrink to coarse blocks then scale back up without smoothing
+      const block = Math.max(8, Math.round(Math.max(w, h) / 12));
+      const small = canvas(Math.max(1, Math.round(w / block)), Math.max(1, Math.round(h / block)));
+      small.ctx.drawImage(c, x, y, w, h, 0, 0, small.c.width, small.c.height);
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(small.c, 0, 0, small.c.width, small.c.height, x, y, w, h);
+      ctx.restore();
+    }
+  }
+  return [await exportCanvas(c, inputFormat(f), `${baseName(f.name)}_blurred`)];
+}

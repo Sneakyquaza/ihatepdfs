@@ -18,7 +18,7 @@ export type OptionDef =
   | (Base & { type: "color"; default: string })
   | (Base & { type: "checkbox"; default: boolean });
 
-export type Editor = "organize" | "sign" | "edit" | "crop";
+export type Editor = "organize" | "sign" | "edit" | "crop" | "redact" | "regions";
 
 export interface Tool {
   id: string;
@@ -67,12 +67,18 @@ export const TOOLS: Tool[] = [
   { id: "remove-pages", category: "organize", icon: "FileMinus", color: C.brand, accept: PDF, multiple: false, mode: "client", options: [pagesOpt] },
   { id: "extract-pages", category: "organize", icon: "FileOutput", color: C.brand, accept: PDF, multiple: false, mode: "client", options: [pagesOpt] },
   { id: "organize-pdf", category: "organize", icon: "LayoutGrid", color: C.brand, accept: PDF, multiple: true, mode: "client", editor: "organize" },
+  {
+    id: "n-up-pdf", category: "organize", icon: "Grid2x2", color: C.brand, accept: PDF, multiple: true, mode: "client",
+    options: [{ type: "select", key: "perSheet", options: ["2", "4"], default: "2" }],
+  },
 
   // ---------- Optimize ----------
   {
     id: "compress-pdf", category: "optimize", icon: "Minimize2", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "compress-pdf",
     options: [{ type: "select", key: "level", options: ["low", "recommended", "extreme"], default: "recommended" }],
   },
+  { id: "grayscale-pdf", category: "optimize", icon: "Contrast", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "grayscale-pdf" },
+  { id: "flatten-pdf", category: "optimize", icon: "Layers", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "flatten-pdf" },
   { id: "repair-pdf", category: "optimize", icon: "Wrench", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "repair-pdf" },
   {
     id: "ocr-pdf", category: "optimize", icon: "ScanText", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "ocr-pdf",
@@ -107,6 +113,7 @@ export const TOOLS: Tool[] = [
   { id: "pdf-to-word", category: "convert-from", icon: "FileText", color: C.blue, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-word" },
   { id: "pdf-to-powerpoint", category: "convert-from", icon: "Presentation", color: C.orange, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-powerpoint" },
   { id: "pdf-to-excel", category: "convert-from", icon: "Sheet", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-excel" },
+  { id: "pdf-to-text", category: "convert-from", icon: "FileType", color: C.gray, accept: PDF, multiple: true, mode: "client" },
   { id: "pdf-to-pdfa", category: "convert-from", icon: "Archive", color: C.gray, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-pdfa" },
 
   // ---------- Edit ----------
@@ -136,6 +143,7 @@ export const TOOLS: Tool[] = [
       { type: "select", key: "layout", options: ["diagonal", "horizontal", "tiled"], default: "diagonal" },
     ],
   },
+  { id: "crop-pdf", category: "edit", icon: "Crop", color: C.indigo, accept: PDF, multiple: false, mode: "client", editor: "crop" },
   { id: "edit-pdf", category: "edit", icon: "PencilLine", color: C.pink, accept: PDF, multiple: false, mode: "client", editor: "edit" },
   { id: "sign-pdf", category: "edit", icon: "Signature", color: C.pink, accept: PDF, multiple: false, mode: "client", editor: "sign" },
   { id: "compare-pdf", category: "edit", icon: "GitCompare", color: C.teal, accept: PDF, multiple: true, minFiles: 2, maxFiles: 2, mode: "server", endpoint: "compare-pdf", serverInput: "pair" },
@@ -148,6 +156,27 @@ export const TOOLS: Tool[] = [
   {
     id: "unlock-pdf", category: "security", icon: "LockOpen", color: C.gray, accept: PDF, multiple: true, mode: "server", endpoint: "unlock-pdf",
     options: [{ type: "text", key: "password", default: "", password: true }],
+  },
+
+  {
+    id: "redact-pdf", category: "security", icon: "EyeOff", color: C.gray, accept: PDF, multiple: false, mode: "server", endpoint: "redact-pdf", editor: "redact",
+    options: [
+      { type: "text", key: "terms", default: "", placeholder: "Dupont, 12 rue…" },
+      { type: "checkbox", key: "redactEmails", default: false },
+      { type: "checkbox", key: "redactPhones", default: false },
+      { type: "checkbox", key: "redactIban", default: false },
+      { type: "checkbox", key: "redactCards", default: false },
+    ],
+  },
+  {
+    id: "edit-metadata", category: "security", icon: "Tags", color: C.gray, accept: PDF, multiple: true, mode: "client",
+    options: [
+      { type: "checkbox", key: "removeAll", default: false },
+      { type: "text", key: "title", default: "", showIf: { key: "removeAll", equals: "false" } },
+      { type: "text", key: "author", default: "", showIf: { key: "removeAll", equals: "false" } },
+      { type: "text", key: "subject", default: "", showIf: { key: "removeAll", equals: "false" } },
+      { type: "text", key: "keywords", default: "", showIf: { key: "removeAll", equals: "false" } },
+    ],
   },
 
   // ---------- Image ----------
@@ -166,6 +195,14 @@ export const TOOLS: Tool[] = [
       { type: "number", key: "width", min: 1, default: 1280, showIf: { key: "resizeMode", equals: "pixels" } },
       { type: "number", key: "height", min: 0, default: 0, showIf: { key: "resizeMode", equals: "pixels" } },
     ],
+  },
+  {
+    id: "blur-image", category: "image", icon: "ScanFace", color: C.teal, accept: IMG, multiple: false, mode: "client", editor: "regions",
+    options: [{ type: "select", key: "effect", options: ["pixelate", "blur", "black"], default: "pixelate" }],
+  },
+  {
+    id: "image-to-text", category: "image", icon: "ScanText", color: C.teal, accept: IMG, multiple: true, mode: "server", endpoint: "image-to-text",
+    options: [{ type: "select", key: "lang", options: ["eng", "fra", "deu", "spa", "ita", "por", "nld", "fra+eng"], default: "fra+eng" }],
   },
   { id: "crop-image", category: "image", icon: "Crop", color: C.teal, accept: IMG, multiple: false, mode: "client", editor: "crop" },
   {

@@ -188,3 +188,88 @@ export function startBoxDrag(
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
+
+export interface DrawnBox extends FracBox {
+  id: string;
+}
+
+/**
+ * Overlay where the user draws rectangles (drag on empty space), moves them (drag) and resizes them (corner).
+ * Must be placed inside a positioned element sized like the surface; coordinates are fractions of it.
+ */
+export function BoxDrawOverlay({
+  boxes,
+  onChange,
+  selected,
+  onSelect,
+  boxClassName,
+}: {
+  boxes: DrawnBox[];
+  onChange: (next: DrawnBox[]) => void;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  boxClassName: string;
+}) {
+  const [draft, setDraft] = useState<DrawnBox | null>(null);
+  const update = (id: string, b: FracBox) => onChange(boxes.map((x) => (x.id === id ? { ...x, ...b } : x)));
+
+  const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    onSelect(null);
+    const target = e.currentTarget;
+    const r = target.getBoundingClientRect();
+    const fx = (e.clientX - r.left) / r.width;
+    const fy = (e.clientY - r.top) / r.height;
+    target.setPointerCapture(e.pointerId);
+    let current: DrawnBox = { id: uid(), x: fx, y: fy, w: 0, h: 0 };
+    setDraft(current);
+    const move = (ev: PointerEvent) => {
+      const cx = clamp((ev.clientX - r.left) / r.width, 0, 1);
+      const cy = clamp((ev.clientY - r.top) / r.height, 0, 1);
+      current = { ...current, x: Math.min(fx, cx), y: Math.min(fy, cy), w: Math.abs(cx - fx), h: Math.abs(cy - fy) };
+      setDraft(current);
+    };
+    const up = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+      setDraft(null);
+      // a plain click creates a default-sized box centred on the pointer
+      if (current.w < 0.01 || current.h < 0.01) {
+        const w = 0.2, h = 0.06;
+        current = { ...current, x: clamp(fx - w / 2, 0, 1 - w), y: clamp(fy - h / 2, 0, 1 - h), w, h };
+      }
+      onChange([...boxes, current]);
+      onSelect(current.id);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up);
+  };
+
+  const style = (b: FracBox): React.CSSProperties => ({
+    left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%`,
+  });
+
+  return (
+    <div data-overlay className="absolute inset-0 cursor-crosshair touch-none" onPointerDown={onDown}>
+      {boxes.map((b) => (
+        <div
+          key={b.id}
+          className={`absolute cursor-move ${boxClassName} ${selected === b.id ? "outline-2 outline-offset-2 outline-dashed outline-brand" : ""}`}
+          style={style(b)}
+          onPointerDown={(e) => {
+            onSelect(b.id);
+            startBoxDrag(e, b, "move", (nb) => update(b.id, nb));
+          }}
+        >
+          {selected === b.id && (
+            <span
+              className="absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 cursor-nwse-resize rounded-full border-2 border-white bg-brand"
+              onPointerDown={(e) => startBoxDrag(e, b, "resize", (nb) => update(b.id, nb))}
+            />
+          )}
+        </div>
+      ))}
+      {draft && <div className={`pointer-events-none absolute opacity-70 ${boxClassName}`} style={style(draft)} />}
+    </div>
+  );
+}

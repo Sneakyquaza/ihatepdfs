@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CropRect } from "@/lib/editorTypes";
+import { extOf } from "@/lib/files";
+import { openPdf, renderPage } from "@/lib/pdfjs";
 import type { EditorProps } from "./shared";
 
 const RATIOS: [string, number | null][] = [
@@ -17,11 +19,27 @@ export default function CropEditor({ files, onChange, t }: EditorProps<CropRect>
   const [ratio, setRatio] = useState<number | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
+  const isPdf = extOf(files[0].name) === "pdf" || files[0].type === "application/pdf";
+
   useEffect(() => {
-    const u = URL.createObjectURL(files[0]);
-    setUrl(u);
-    return () => URL.revokeObjectURL(u);
-  }, [files]);
+    if (!isPdf) {
+      const u = URL.createObjectURL(files[0]);
+      setUrl(u);
+      return () => URL.revokeObjectURL(u);
+    }
+    // PDF: crop is drawn on a render of page 1 and applied to every page
+    let alive = true;
+    (async () => {
+      const doc = await openPdf(files[0]);
+      const page = await doc.getPage(1);
+      const canvas = await renderPage(doc, 1, 1400 / page.getViewport({ scale: 1 }).width);
+      await doc.destroy();
+      if (alive) setUrl(canvas.toDataURL("image/jpeg", 0.85));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [files, isPdf]);
 
   useEffect(() => onChange(rect), [rect, onChange]);
 
@@ -92,13 +110,13 @@ export default function CropEditor({ files, onChange, t }: EditorProps<CropRect>
             {r === null ? t.editors.cropFree : label}
           </button>
         ))}
-        {size && (
+        {size && !isPdf && (
           <span className="ml-auto font-mono text-sm text-muted">
             {Math.round(rect.w * size.w)} × {Math.round(rect.h * size.h)} px
           </span>
         )}
       </div>
-      <p className="text-sm text-muted">{t.editors.cropHint}</p>
+      <p className="text-sm text-muted">{t.editors.cropHint}{isPdf && ` ${t.editors.cropPdfHint}`}</p>
       <div className="checker flex justify-center rounded-2xl p-4">
         <div ref={boxRef} className="relative inline-block touch-none select-none overflow-hidden">
           {url && (

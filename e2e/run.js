@@ -48,6 +48,27 @@ const cases = [
     await p.getByRole("button", { name: "Surligner" }).click();
     await p.mouse.move(o.x + 60, o.y + 50); await p.mouse.down(); await p.mouse.move(o.x + 300, o.y + 80); await p.mouse.up();
   }],
+  ["n-up-pdf", ["a.pdf"]],
+  ["grayscale-pdf", ["a.pdf"]],
+  ["flatten-pdf", ["a.pdf"]],
+  ["pdf-to-text", ["a.pdf"]],
+  ["crop-pdf", ["a.pdf"], async (p) => p.getByRole("button", { name: "1:1" }).click()],
+  ["edit-metadata", ["a.pdf"], async (p) => p.getByLabel("Tout effacer").check()],
+  ["image-to-text", ["photo.png"]],
+  ["redact-pdf", ["a.pdf"], async (p) => {
+    await p.waitForSelector("[data-overlay]");
+    const o = await p.locator("[data-overlay]").boundingBox();
+    await p.mouse.move(o.x + o.width * 0.1, o.y + o.height * 0.05); await p.mouse.down();
+    await p.mouse.move(o.x + o.width * 0.6, o.y + o.height * 0.12); await p.mouse.up();
+    await p.fill("#opt-terms", "contrat");
+  }],
+  ["blur-image", ["photo.png"], async (p) => {
+    await p.waitForSelector("[data-overlay]");
+    await p.waitForTimeout(300);
+    const o = await p.locator("[data-overlay]").boundingBox();
+    await p.mouse.move(o.x + o.width * 0.3, o.y + o.height * 0.3); await p.mouse.down();
+    await p.mouse.move(o.x + o.width * 0.7, o.y + o.height * 0.7); await p.mouse.up();
+  }],
   ["remove-bg", ["photo.png"]],
 ];
 
@@ -83,7 +104,7 @@ const cases = [
       await d.saveAs(file);
       const size = require("fs").statSync(file).size;
       console.log(`OK   ${id.padEnd(18)} ${d.suggestedFilename()} ${size}B ${Date.now() - t0}ms ${errs.length ? "PAGEERR " + errs.join("|") : ""}`);
-      if (["sign-pdf", "edit-pdf", "crop-image", "organize-pdf"].includes(id)) {
+      if (["sign-pdf", "edit-pdf", "crop-image", "organize-pdf", "crop-pdf", "redact-pdf", "blur-image"].includes(id)) {
         await p.getByText("Recommencer").click();
       }
     } catch (e) {
@@ -91,6 +112,16 @@ const cases = [
       process.exitCode = 1;
       console.log(`FAIL ${id.padEnd(18)} ${String(e.message).split("\n")[0]} ${errs.join("|")}`);
     }
+    await p.close();
+  }
+  if (!only) {
+    const p = await ctx.newPage();
+    await p.goto(BASE);
+    const recentOk = await p.getByRole("heading", { name: "Utilisés récemment" }).isVisible();
+    await p.getByRole("button", { name: "Ajouter aux favoris" }).first().click();
+    const favOk = await p.getByRole("heading", { name: "Favoris" }).isVisible();
+    if (!recentOk || !favOk) process.exitCode = 1;
+    console.log(`${recentOk && favOk ? "OK  " : "FAIL"} home shortcuts      recent=${recentOk} favorites=${favOk}`);
     await p.close();
   }
   await browser.close();

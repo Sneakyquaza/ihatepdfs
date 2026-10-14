@@ -1,5 +1,5 @@
-import { degrees, PDFDocument, PDFFont, PDFPage, rgb, StandardFonts } from "pdf-lib";
-import type { Box, EditItem, OrganizeItem, SignPlacement } from "../editorTypes";
+import { degrees, type PDFDict, PDFDocument, PDFFont, PDFName, PDFPage, rgb, StandardFonts } from "pdf-lib";
+import type { Box, CropRect, EditItem, OrganizeItem, SignPlacement } from "../editorTypes";
 import { baseName, hexToRgb01, type Options, type OutputFile, parsePages, parseRangeGroups } from "../files";
 import { canvasToBlob, openPdf, renderPage } from "../pdfjs";
 
@@ -56,6 +56,16 @@ function placeBox(page: PDFPage, box: Omit<Box, "page">) {
     default: x = u * W; y = (1 - v) * H;
   }
   return { x: crop.x + x, y: crop.y + y, width: box.w * dispW, height: box.h * dispH, rotate: degrees(r), dispW, dispH };
+}
+
+/** Map a point given in display fractions (rotation applied, top-left origin) to unrotated user space. */
+function mapPoint(page: PDFPage, u: number, v: number): [number, number] {
+  const crop = page.getCropBox();
+  const r = ((page.getRotation().angle % 360) + 360) % 360;
+  const { width: W, height: H } = crop;
+  const [x, y] =
+    r === 90 ? [v * W, u * H] : r === 180 ? [W * (1 - u), v * H] : r === 270 ? [W * (1 - v), H * (1 - u)] : [u * W, (1 - v) * H];
+  return [crop.x + x, crop.y + y];
 }
 
 // ---------------------------------------------------------------------------
@@ -291,4 +301,94 @@ export async function imagesToPdf(files: File[], o: Options): Promise<OutputFile
     doc.addPage([pw, ph]).drawImage(img, { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h });
   }
   return [await save(doc, files.length === 1 ? `${baseName(files[0].name)}.pdf` : "images.pdf")];
+}
+
+export async function cropPdf(files: File[], _o: Options, rect: CropRect): Promise<OutputFile[]> {
+  const r = rect ?? { x: 0, y: 0, w: 1, h: 1 };
+  const doc = await load(files[0]);
+  for (const page of doc.getPages()) {
+    const [x1, y1] = mapPoint(page, r.x, r.y);
+    const [x2, y2] = mapPoint(page, r.x + r.w, r.y + r.h);
+    page.setCropBox(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+  }
+  return [await save(doc, `${baseName(files[0].name)}_cropped.pdf`)];
+}
+
+export async function pdfToText(files: File[]): Promise<OutputFile[]> {
+  const outs: OutputFile[] = [];
+  for (const f of files) {
+    const doc = await openPdf(f);
+    try {
+      const pages: string[] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const content = await (await doc.getPage(i)).getTextContent();
+        let text = "";
+        for (const item of content.items) {
+          if (!("str" in item)) continue;
+          text += item.str + (item.hasEOL ? "\n" : "");
+        }
+        pages.push(text.trim());
+      }
+      const body = pages.map((t, i) => (doc.numPages > 1 ? `--- Page ${i + 1} ---\n${t}` : t)).join("\n\n");
+      outs.push({ name: `${baseName(f.name)}.txt`, blob: new Blob([body + "\n"], { type: "text/plain;charset=utf-8" }) });
+    } finally {
+      await doc.destroy();
+    }
+  }
+  return outs;
+}
+
+export async function nUpPdf(files: File[], o: Options): Promise<OutputFile[]> {
+  const per = Number(o.perSheet) === 4 ? 4 : 2;
+  // 2-up: A4 landscape, side by side; 4-up: A4 portrait, 2x2
+  const [SW, SH] = per === 2 ? [841.89, 595.28] : [595.28, 841.89];
+  const [cols, rows] = per === 2 ? [2, 1] : [2, 2];
+  const margin = 18;
+  const cellW = (SW - margin * (cols + 1)) / cols;
+  const cellH = (SH - margin * (rows + 1)) / rows;
+  const outs: OutputFile[] = [];
+  for (const f of files) {
+    const src = await load(f);
+    const out = await PDFDocument.create();
+    const embedded = await out.embedPages(src.getPages());
+    for (let i = 0; i < embedded.length; i += per) {
+      const sheet = out.addPage([SW, SH]);
+      embedded.slice(i, i + per).forEach((ep, k) => {
+        const rot = ((src.getPage(i + k).getRotation().angle % 360) + 360) % 360;
+        const [dw, dh] = rot % 180 ? [ep.height, ep.width] : [ep.width, ep.height];
+        const s = Math.min(cellW / dw, cellH / dh);
+        const col = k % cols;
+        const row = Math.floor(k / cols);
+        // centre the (displayed) page in its cell
+        const cx = margin + col * (cellW + margin) + (cellW - dw * s) / 2;
+        const cy = SH - margin - (row + 1) * cellH - row * margin + (cellH - dh * s) / 2;
+        // embedded pages ignore /Rotate: rotate around the anchor so the page shows as it does in a viewer
+        const [ax, ay] =
+          rot === 90 ? [cx, cy + dh * s] : rot === 180 ? [cx + dw * s, cy + dh * s] : rot === 270 ? [cx + dw * s, cy] : [cx, cy];
+        sheet.drawPage(ep, { x: ax, y: ay, xScale: s, yScale: s, rotate: degrees(-rot) });
+      });
+    }
+    outs.push(await save(out, `${baseName(f.name)}_${per}up.pdf`));
+  }
+  return outs;
+}
+
+export async function editMetadata(files: File[], o: Options): Promise<OutputFile[]> {
+  const outs: OutputFile[] = [];
+  for (const f of files) {
+    // updateMetadata:false stops pdf-lib from stamping its own Producer/ModDate
+    const doc = await PDFDocument.load(await f.arrayBuffer(), { ignoreEncryption: true, updateMetadata: false });
+    if (o.removeAll) {
+      const info = (doc as unknown as { getInfoDict(): PDFDict }).getInfoDict();
+      for (const key of info.keys()) info.delete(key);
+      doc.catalog.delete(PDFName.of("Metadata")); // XMP stream
+    } else {
+      if (o.title) doc.setTitle(String(o.title));
+      if (o.author) doc.setAuthor(String(o.author));
+      if (o.subject) doc.setSubject(String(o.subject));
+      if (o.keywords) doc.setKeywords(String(o.keywords).split(",").map((k) => k.trim()).filter(Boolean));
+    }
+    outs.push(await save(doc, f.name));
+  }
+  return outs;
 }

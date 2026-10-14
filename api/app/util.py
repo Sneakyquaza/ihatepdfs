@@ -27,6 +27,7 @@ MEDIA_TYPES = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".zip": "application/zip",
+    ".txt": "text/plain; charset=utf-8",
 }
 
 

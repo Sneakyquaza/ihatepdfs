@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fmt, getDict, type Locale } from "@/i18n";
 import type { EditorData } from "@/lib/editorTypes";
 import { downloadBlob, extOf, formatBytes, type Options, type OutputFile, zipOutputs } from "@/lib/files";
+import { pushRecent } from "@/lib/prefs";
 import { runTool } from "@/lib/processors";
 import { defaultOptions, TOOL_MAP } from "@/lib/tools";
 import { FileThumb } from "./FileThumb";
@@ -25,6 +26,8 @@ const EDITORS = {
   sign: dynamic(() => import("./editors/SignEditor"), { ssr: false, loading: editorLoading }),
   edit: dynamic(() => import("./editors/EditPdfEditor"), { ssr: false, loading: editorLoading }),
   crop: dynamic(() => import("./editors/CropEditor"), { ssr: false, loading: editorLoading }),
+  redact: dynamic(() => import("./editors/RedactEditor"), { ssr: false, loading: editorLoading }),
+  regions: dynamic(() => import("./editors/RegionsEditor"), { ssr: false, loading: editorLoading }),
 };
 
 function accepts(accept: string, file: File): boolean {
@@ -136,6 +139,7 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
       const out = await runTool(tool, files, opts, { editorData, onProgress: setProgress });
       setOutputs(out);
       setStatus("done");
+      pushRecent(tool.id);
       if (out.length === 1) downloadBlob(out[0].blob, out[0].name);
     } catch (e) {
       console.error(e);

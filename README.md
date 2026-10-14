@@ -1,6 +1,6 @@
 # iHatePDFs — outils PDF & image gratuits
 
-34 outils, FR/EN. Architecture hybride : le léger tourne dans le navigateur, le lourd sur une API Python.
+43 outils, FR/EN. Architecture hybride : le léger tourne dans le navigateur, le lourd sur une API Python.
 
 ```
 web/  Next.js 15 (App Router, TS, Tailwind 4)  — UI + traitements navigateur (pdf-lib, pdf.js, canvas, IA WASM)
@@ -24,8 +24,8 @@ cd web && npm install && npm run dev
 
 | Où | Outils |
 |---|---|
-| Navigateur | fusionner, diviser, supprimer/extraire pages, organiser (glisser-déposer), pivoter, numéroter, filigrane, éditer (texte/formes/surlignage/masquage), signer (dessin/texte/import), PDF→image, image→PDF, **suppression d'arrière-plan IA**, redimensionner, recadrer, compresser, convertir, pivoter/miroir, filigrane image |
-| Serveur | compresser, réparer, OCR, PDF/A, Word/PowerPoint/Excel→PDF, HTML/URL→PDF, PDF→Word/Excel/PowerPoint, protéger, déverrouiller, comparer, agrandissement IA x2/x4 |
+| Navigateur | fusionner, diviser, supprimer/extraire pages, organiser (glisser-déposer), plusieurs pages par feuille, recadrer, métadonnées, PDF→texte, pivoter, numéroter, filigrane, éditer (texte/formes/surlignage/masquage), signer (dessin/texte/import), PDF→image, image→PDF, **suppression d'arrière-plan IA**, redimensionner, recadrer, compresser, convertir, pivoter/miroir, filigrane image, flouter/pixeliser des zones |
+| Serveur | **caviarder** (suppression réelle du contenu + recherche de mots/e-mails/téléphones/IBAN/cartes), aplatir, niveaux de gris, compresser, réparer, OCR (PDF et image), PDF/A, Word/PowerPoint/Excel→PDF, HTML/URL→PDF, PDF→Word/Excel/PowerPoint, protéger, déverrouiller, comparer, agrandissement IA x2/x4 |
 
 ## Tests
 

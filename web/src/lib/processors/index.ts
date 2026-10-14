@@ -26,6 +26,10 @@ const CLIENT: Record<string, Processor> = {
   "edit-pdf": async (f, o, c) => (await pdf()).editPdf(f, o, c.editorData as never),
   "pdf-to-jpg": async (f, o) => (await pdf()).pdfToImages(f, o),
   "jpg-to-pdf": async (f, o) => (await pdf()).imagesToPdf(f, o),
+  "crop-pdf": async (f, o, c) => (await pdf()).cropPdf(f, o, c.editorData as never),
+  "pdf-to-text": async (f) => (await pdf()).pdfToText(f),
+  "n-up-pdf": async (f, o) => (await pdf()).nUpPdf(f, o),
+  "edit-metadata": async (f, o) => (await pdf()).editMetadata(f, o),
   "remove-bg": async (f, o, c) => (await img()).removeBg(f, o, c.onProgress),
   "resize-image": async (f, o) => (await img()).resizeImage(f, o),
   "crop-image": async (f, o, c) => (await img()).cropImage(f, o, c.editorData as never),
@@ -33,6 +37,7 @@ const CLIENT: Record<string, Processor> = {
   "convert-image": async (f, o) => (await img()).convertImage(f, o),
   "rotate-image": async (f, o) => (await img()).rotateImage(f, o),
   "watermark-image": async (f, o) => (await img()).watermarkImage(f, o),
+  "blur-image": async (f, o, c) => (await img()).blurImage(f, o, c.editorData as never),
 };
 
 function filenameFrom(res: Response, fallback: string): string {
@@ -66,6 +71,8 @@ function withOptions(form: FormData, opts: Options) {
 
 async function runServer(tool: Tool, files: File[], opts: Options, ctx: RunContext): Promise<OutputFile[]> {
   const endpoint = tool.endpoint!;
+  // visual editor output travels as a JSON form field named "editor"
+  if (tool.editor && ctx.editorData != null) opts = { ...opts, editor: JSON.stringify(ctx.editorData) };
   if (tool.serverInput === "pair") {
     const form = withOptions(new FormData(), opts);
     form.append("file_a", files[0]);
