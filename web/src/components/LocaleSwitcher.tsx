@@ -13,7 +13,7 @@ export function LocaleSwitcher({ locale, label }: { locale: Locale; label: strin
         <Link
           key={l}
           href={`/${l}${rest ? `/${rest}` : ""}`}
-          className={`rounded-full px-3 py-1 uppercase ${l === locale ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+          className={`rounded-full px-3 py-1 uppercase ${l === locale ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"}`}
           aria-current={l === locale ? "true" : undefined}
         >
           {l}

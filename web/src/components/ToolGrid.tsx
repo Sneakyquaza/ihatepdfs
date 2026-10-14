@@ -19,7 +19,7 @@ function ToolCard({
 }: { tool: Tool; locale: Locale; t: Dict; favorite: boolean; onToggleFavorite: () => void }) {
   const { name, desc } = t.tools[tool.id as keyof Dict["tools"]];
   return (
-    <div className="group relative rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-md">
+    <div className="group relative rounded-2xl bg-surface p-5 shadow-sm ring-1 ring-line transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center gap-2">
         <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: `${tool.color}18`, color: tool.color }}>
           <ToolIcon name={tool.icon} className="h-6 w-6" />
@@ -41,7 +41,7 @@ function ToolCard({
         aria-pressed={favorite}
         aria-label={favorite ? t.home.removeFavorite : t.home.addFavorite}
         title={favorite ? t.home.removeFavorite : t.home.addFavorite}
-        className={`absolute right-3 top-3 z-10 rounded-full p-2 transition hover:bg-black/5 ${
+        className={`absolute right-3 top-3 z-10 rounded-full p-2 transition hover:bg-ink/5 ${
           favorite ? "text-amber-500" : "text-muted/40 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
         }`}
       >
@@ -76,7 +76,7 @@ export function ToolGrid({ locale }: { locale: Locale }) {
     router.replace(c ? `/${locale}?cat=${c}#tools` : `/${locale}#tools`, { scroll: false });
 
   const chip = (active: boolean) =>
-    `rounded-full px-4 py-2 text-sm font-semibold transition ${active ? "bg-ink text-white" : "bg-white text-ink hover:bg-black/5"}`;
+    `rounded-full px-4 py-2 text-sm font-semibold transition ${active ? "bg-ink text-canvas" : "bg-surface text-ink hover:bg-ink/5"}`;
 
   const card = (tool: Tool) => (
     <ToolCard
@@ -110,7 +110,7 @@ export function ToolGrid({ locale }: { locale: Locale }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t.home.search}
-            className="w-full rounded-full border border-black/10 bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:border-brand"
+            className="w-full rounded-full border border-line bg-surface py-2.5 pl-10 pr-4 text-sm outline-none focus:border-brand"
           />
         </label>
       </div>

@@ -3,13 +3,14 @@
 import { Eraser, Highlighter, MousePointer2, Square, Trash2, Type } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { EditItem } from "@/lib/editorTypes";
-import { EditorError, type EditorProps, PageNav, PdfPage, type PageGeometry, startBoxDrag, uid, usePdfDoc } from "./shared";
+import { EditorError, type EditorProps, handleBoxKey, PageNav, PdfPage, type PageGeometry, startBoxDrag, uid, usePdfDoc } from "./shared";
 
 type Kind = EditItem["kind"];
 type Item = EditItem & { id: string };
 type ToolKind = Kind | "select";
 
 const LINE = 1.2;
+const KIND_LABEL = { text: "editText", rect: "editRect", whiteout: "editWhiteout", highlight: "editHighlight" } as const;
 let measureCtx: CanvasRenderingContext2D | null = null;
 
 /** Width/height of a (multi-line) text block as fractions of the page, using Helvetica-like metrics. */
@@ -120,7 +121,15 @@ export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditIt
     return (
       <div
         key={it.id}
-        className={`absolute ${isDraft ? "" : "cursor-move"} ${box} ${isSel ? "outline-2 outline-dashed outline-brand" : ""}`}
+        role={isDraft ? undefined : "button"}
+        tabIndex={isDraft ? undefined : 0}
+        aria-label={isDraft ? undefined : it.kind === "text" ? it.text : t.editors[KIND_LABEL[it.kind]]}
+        onFocus={isDraft ? undefined : () => setSelected(it.id)}
+        onKeyDown={isDraft ? undefined : (e) => handleBoxKey(e, it, (b) => patch(it.id, b), () => {
+          setItems((all) => all.filter((x) => x.id !== it.id));
+          setSelected(null);
+        })}
+        className={`absolute focus:outline-none ${isDraft ? "" : "cursor-move"} ${box} ${isSel ? "outline-2 outline-dashed outline-brand" : ""}`}
         style={{
           ...style,
           ...(it.kind === "highlight" ? { background: it.color, opacity: 0.35 } : {}),
@@ -150,7 +159,7 @@ export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditIt
   };
 
   const toolBtn = (k: ToolKind, Icon: typeof Type, label: string) => (
-    <button onClick={() => setTool(k)} title={label} aria-label={label} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold ${tool === k ? "bg-ink text-white" : "bg-white hover:bg-black/5"}`}>
+    <button onClick={() => setTool(k)} title={label} aria-label={label} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold ${tool === k ? "bg-ink text-canvas" : "bg-surface hover:bg-ink/5"}`}>
       <Icon className="h-4 w-4" />
       <span className="hidden sm:inline">{label}</span>
     </button>
@@ -165,9 +174,9 @@ export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditIt
           {toolBtn("rect", Square, t.editors.editRect)}
           {toolBtn("whiteout", Eraser, t.editors.editWhiteout)}
           {toolBtn("highlight", Highlighter, t.editors.editHighlight)}
-          <span className="mx-1 h-6 w-px bg-black/10" />
-          <input type="color" aria-label={t.options.color} value={sel && "color" in sel ? sel.color : color} onChange={(e) => { setColor(e.target.value); if (sel && "color" in sel) patch(sel.id, { color: e.target.value }); }} className="h-9 w-9 cursor-pointer rounded-lg border border-black/10 bg-white p-0.5" />
-          <input type="number" aria-label={t.options.fontSize} min={6} max={96} value={sel?.kind === "text" ? sel.size : size} onChange={(e) => { const v = Number(e.target.value) || 12; setSize(v); if (sel?.kind === "text") patch(sel.id, { size: v }); }} className="w-16 rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm" />
+          <span className="mx-1 h-6 w-px bg-line" />
+          <input type="color" aria-label={t.options.color} value={sel && "color" in sel ? sel.color : color} onChange={(e) => { setColor(e.target.value); if (sel && "color" in sel) patch(sel.id, { color: e.target.value }); }} className="h-9 w-9 cursor-pointer rounded-lg border border-line bg-surface p-0.5" />
+          <input type="number" aria-label={t.options.fontSize} min={6} max={96} value={sel?.kind === "text" ? sel.size : size} onChange={(e) => { const v = Number(e.target.value) || 12; setSize(v); if (sel?.kind === "text") patch(sel.id, { size: v }); }} className="w-16 rounded-lg border border-line bg-surface px-2 py-1.5 text-sm" />
         </div>
         {/* fixed-height row so selecting items never shifts the page below */}
         <div className="flex h-16 items-center gap-2">
@@ -177,10 +186,13 @@ export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditIt
               value={sel.text}
               onChange={(e) => patch(sel.id, { text: e.target.value })}
               onFocus={(e) => e.target.select()}
-              className="h-full flex-1 resize-none rounded-lg border border-brand/40 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+              className="h-full flex-1 resize-none rounded-lg border border-brand/40 bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
             />
           ) : (
-            <p className="flex-1 px-2 text-sm text-muted">{t.editors.editHint}</p>
+            <p className="flex-1 px-2 text-sm text-muted">
+              {t.editors.editHint}
+              <span className="block text-xs">{t.editors.keyboardHint}</span>
+            </p>
           )}
           {selected && (
             <button onClick={remove} className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-brand hover:bg-brand/5">

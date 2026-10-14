@@ -2,10 +2,17 @@ import { Heart, HeartCrack } from "lucide-react";
 import Link from "next/link";
 import type { Dict, Locale } from "@/i18n";
 import { LocaleSwitcher } from "./LocaleSwitcher";
+import { MobileMenu } from "./MobileMenu";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Header({ locale, t }: { locale: Locale; t: Dict }) {
+  const links = [
+    { href: `/${locale}#tools`, label: t.nav.allTools },
+    { href: `/${locale}?cat=organize#tools`, label: t.nav.pdfTools },
+    { href: `/${locale}?cat=image#tools`, label: t.nav.imageTools },
+  ];
   return (
-    <header className="sticky top-0 z-40 border-b border-black/5 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-line bg-surface/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4">
         <Link href={`/${locale}`} aria-label="iHatePDFs" className="flex items-center gap-2 pb-2 text-xl font-extrabold tracking-tight">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white" aria-hidden>
@@ -25,12 +32,14 @@ export function Header({ locale, t }: { locale: Locale; t: Dict }) {
           </span>
         </Link>
         <nav className="hidden items-center gap-5 text-sm font-semibold text-muted md:flex">
-          <Link href={`/${locale}#tools`} className="hover:text-ink">{t.nav.allTools}</Link>
-          <Link href={`/${locale}?cat=organize#tools`} className="hover:text-ink">{t.nav.pdfTools}</Link>
-          <Link href={`/${locale}?cat=image#tools`} className="hover:text-ink">{t.nav.imageTools}</Link>
+          {links.map((l) => (
+            <Link key={l.href} href={l.href} className="hover:text-ink">{l.label}</Link>
+          ))}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <ThemeToggle labels={{ system: t.nav.themeSystem, light: t.nav.themeLight, dark: t.nav.themeDark }} />
           <LocaleSwitcher locale={locale} label={t.nav.language} />
+          <MobileMenu links={links} label={t.nav.menu} />
         </div>
       </div>
     </header>

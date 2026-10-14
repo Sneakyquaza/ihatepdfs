@@ -10,7 +10,7 @@ function visible(def: OptionDef, values: Options): boolean {
   return Array.isArray(def.showIf.equals) ? def.showIf.equals.includes(v) : def.showIf.equals === v;
 }
 
-const input = "w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand";
+const input = "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand";
 
 export function OptionsForm({
   defs,
@@ -52,14 +52,15 @@ export function OptionsForm({
             </label>
             {d.type === "select" &&
               (d.options.length <= 3 ? (
-                <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${d.options.length}, minmax(0, 1fr))` }}>
+                // long labels stack instead of being broken mid-word in narrow columns
+                <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.max(...d.options.map((o) => valueLabel(o).length)) > 10 ? 1 : d.options.length}, minmax(0, 1fr))` }}>
                   {d.options.map((o) => (
                     <button
                       key={o}
                       type="button"
                       onClick={() => set(d.key, o)}
-                      className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
-                        values[d.key] === o ? "border-brand bg-brand/5 text-brand" : "border-black/10 bg-white hover:border-black/30"
+                      className={`rounded-lg border px-2 py-2 text-xs font-semibold leading-tight transition ${
+                        values[d.key] === o ? "border-brand bg-brand/5 text-brand" : "border-line bg-surface hover:border-ink/30"
                       }`}
                     >
                       {valueLabel(o)}
@@ -114,7 +115,7 @@ export function OptionsForm({
                 type="color"
                 value={String(values[d.key])}
                 onChange={(e) => set(d.key, e.target.value)}
-                className="h-10 w-full cursor-pointer rounded-lg border border-black/10 bg-white p-1"
+                className="h-10 w-full cursor-pointer rounded-lg border border-line bg-surface p-1"
               />
             )}
           </div>

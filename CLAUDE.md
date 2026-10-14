@@ -42,19 +42,26 @@ New tools need a case in `e2e/run.js` (`[id, fixtures, optional setup(page)]`). 
 
 ## Architecture
 
-Two services behind Apache (vhosts in `/etc/apache2/sites-available/ihatepdfs*.conf`, TLS via certbot; local copies in `deploy/*.conf` are gitignored — the server's proxy config is deliberately not published):
+Three services behind Apache (vhosts in `/etc/apache2/sites-available/ihatepdfs*.conf`, TLS via certbot; local copies in `deploy/*.conf` are gitignored — the server's proxy config is deliberately not published):
 
 - `web/` — Next.js 16 App Router (Turbopack), all pages statically generated under `/[locale]/...`. `src/proxy.ts` (Next 16's name for middleware) redirects locale-less paths; its matcher must keep excluding `/api`, `/_next`, `/bg-model` and files with extensions. `/api/*` is proxied to the FastAPI service by a rewrite in `next.config.ts`; **`API_URL` is baked in at build time** (Docker build arg `http://api:8000`), so the browser is always same-origin.
+- `render/` — headless Chromium (Playwright) for HTML/URL→PDF, called only by the API (`RENDER_URL`). It renders untrusted pages, so it runs in its own hardened container (read-only, no caps, own network, no access to user files). Its route handler fetches every request itself against a pre-validated public IP (rebinding-proof) and follows redirects hop by hop — never hand Chromium a 3xx from `route.fulfill`, it follows those without re-entering the handler. Chromium is launched behind a dead proxy (loopback included) so anything escaping interception fails.
 - `api/` — FastAPI, single uvicorn worker (rate-limit and queue state are in-process). Heavy lifting via CLI tools/libs: Ghostscript, LibreOffice (`soffice`), ocrmypdf/Tesseract, pikepdf, PyMuPDF, pdf2docx, WeasyPrint, OpenCV `dnn_superres` (FSRCNN models in `/models`).
 
 ### Tool registry drives everything
 
 `web/src/lib/tools.ts` (`TOOLS`) declares every tool: category, icon name, `accept`, `mode: "client" | "server"`, `endpoint`, `options` and optional `editor`. From it:
 - the home grid, routes (`generateStaticParams`) and the options form (`OptionsForm`, generated from `OptionDef`s, with `showIf`) are built automatically;
-- `ToolRunner` runs `runTool()` (`lib/processors/index.ts`), which either calls a lazily-imported client processor (`processors/pdf.ts`, `processors/image.ts`) or POSTs to `/api/<endpoint>` — one request per file, except `serverInput: "pair"` (`file_a`/`file_b`, compare). Options are sent as form fields with the same keys.
+- `ToolRunner` (orchestration) composes `components/runner/*` (UploadHero, FileGrid, RunPanel, ResultView) and runs `runTool()` (`lib/processors/index.ts`), which either calls a lazily-imported client processor (`processors/pdf.ts`, `processors/image.ts`) or POSTs to `/api/<endpoint>` — one request per file, except `serverInput: "pair"` (`file_a`/`file_b`, compare). Options are sent as form fields with the same keys.
 - Icons must be added to the explicit map in `components/ToolIcon.tsx`.
 
 Adding a tool = registry entry + `tools.<id>` (and any new option/value labels) in **both** `i18n/fr.ts` and `i18n/en.ts` (`en` is typed as `Dict = typeof fr`, so missing keys fail typecheck) + a processor or an endpoint.
+
+Progress is structured (`Progress` in `processors/index.ts`: phase upload/server/model/work, optional fraction, batch step); server calls use XHR for upload progress. "Continue with…" on the result screen hands the output files to the next tool through module memory (`lib/handoff.ts`, client-side navigation only — tools in `HARD_NAV`/`NO_HANDOFF` are excluded).
+
+Theme: colors are tokens (`bg-surface`, `bg-canvas`, `text-ink`, `text-muted`, `border-line`) defined in `globals.css` for light and `[data-theme="dark"]`; don't use `bg-white`/`black/x` in UI chrome (PDF "paper", the signature pad and the white-out tool stay white on purpose). `dark:` targets `[data-theme=dark]`, set before paint by `THEME_SCRIPT`.
+
+Editors are keyboard-operable: boxes are focusable buttons using `handleBoxKey` (arrows move, Alt+arrows resize, Delete removes).
 
 Home-page favorites and "recently used" (`lib/prefs.ts`) live in `localStorage` only; a tool is recorded as recent after a successful run.
 
@@ -76,7 +83,7 @@ Every endpoint wraps its work in `handle(work)`: creates a per-request `Workspac
 
 Redaction (`redact.py`) must stay server-side: PyMuPDF `apply_redactions` removes the text/pixels under each area, then `doc.scrub()` + `garbage=4` drop metadata, hidden text and orphaned objects. Areas arrive as display fractions and are mapped with `page.derotation_matrix`; text/regex matches are found on the page's words joined by spaces (a match redacts every word it touches). Returns 400 when nothing matched.
 
-HTML→PDF uses a WeasyPrint ≥70 `URLFetcher` subclass that only allows `data:` and public http(s) hosts and re-checks every redirect hop (SSRF guard, also blocks `file://` from uploaded HTML).
+PDF→PowerPoint (`jobs.pdf_to_powerpoint`) produces editable slides: horizontal text spans are redacted out of the page (images/vector art kept), the page is rendered as the slide background, and each text line is re-created as a text box (font/size/color/bold/italic). Rotated pages and non-horizontal text stay in the picture.
 
 ### Security headers
 

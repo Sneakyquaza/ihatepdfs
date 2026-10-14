@@ -29,7 +29,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
           {t.home.why.map((w, i) => {
             const Icon = WHY_ICONS[i];
             return (
-              <div key={w.title} className="rounded-2xl bg-white p-6 shadow-sm">
+              <div key={w.title} className="rounded-2xl bg-surface p-6 shadow-sm">
                 <Icon className="h-8 w-8 text-brand" />
                 <h3 className="mt-4 text-lg font-bold">{w.title}</h3>
                 <p className="mt-2 text-sm text-muted">{w.text}</p>

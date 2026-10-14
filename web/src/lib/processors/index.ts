@@ -3,9 +3,17 @@ import { AppError } from "../errors";
 import { baseName, type Options, type OutputFile } from "../files";
 import type { Tool } from "../tools";
 
+/** phase drives the label; fraction (0..1) the bar, absent = indeterminate; step/steps for batches. */
+export interface Progress {
+  phase: "upload" | "server" | "model" | "work";
+  fraction?: number;
+  step?: number;
+  steps?: number;
+}
+
 export interface RunContext {
   editorData: EditorData;
-  onProgress?: (msg: string) => void;
+  onProgress?: (p: Progress) => void;
 }
 
 type Processor = (files: File[], opts: Options, ctx: RunContext) => Promise<OutputFile[]>;
@@ -41,34 +49,51 @@ const CLIENT: Record<string, Processor> = {
   "blur-image": async (f, o, c) => (await img()).blurImage(f, o, c.editorData as never),
 };
 
-function filenameFrom(res: Response, fallback: string): string {
-  const cd = res.headers.get("Content-Disposition") ?? "";
+function filenameFrom(header: string | null, fallback: string): string {
+  const cd = header ?? "";
   const star = cd.match(/filename\*=(?:UTF-8|utf-8)''([^;]+)/);
   if (star) return decodeURIComponent(star[1]);
   const plain = cd.match(/filename="?([^";]+)"?/);
   return plain ? plain[1] : fallback;
 }
 
-async function post(endpoint: string, form: FormData, fallbackName: string): Promise<OutputFile> {
-  let res: Response;
-  try {
-    res = await fetch(`/api/${endpoint}`, { method: "POST", body: form });
-  } catch {
-    throw new AppError("network");
-  }
-  if (!res.ok) {
-    // API errors are {detail: {code, message, params?}}; anything else (proxy page, crash) gets a generic code
-    let detail: { code?: string; message?: string; params?: Record<string, string | number> } | undefined;
-    try {
-      const body = await res.json();
-      detail = typeof body?.detail === "object" ? body.detail : undefined;
-    } catch {
-      /* non-JSON error body */
-    }
-    const fallback = res.status === 413 ? "file_too_large" : res.status === 429 ? "rate_limited" : res.status === 503 ? "busy" : res.status === 504 ? "timeout" : "processing_failed";
-    throw new AppError(detail?.code ?? fallback, detail?.params ?? {}, detail?.message);
-  }
-  return { name: filenameFrom(res, fallbackName), blob: await res.blob() };
+/** XHR rather than fetch: fetch can't report upload progress. */
+function post(
+  endpoint: string,
+  form: FormData,
+  fallbackName: string,
+  onProgress?: (p: Progress) => void,
+  batch: Pick<Progress, "step" | "steps"> = {},
+): Promise<OutputFile> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/${endpoint}`);
+    xhr.responseType = "blob";
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.({ phase: "upload", fraction: e.loaded / e.total, ...batch });
+    };
+    xhr.upload.onload = () => onProgress?.({ phase: "server", ...batch });
+    xhr.onerror = () => reject(new AppError("network"));
+    xhr.onload = async () => {
+      const blob = xhr.response as Blob;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ name: filenameFrom(xhr.getResponseHeader("Content-Disposition"), fallbackName), blob });
+        return;
+      }
+      // API errors are {detail: {code, message, params?}}; anything else (proxy page, crash) gets a generic code
+      let detail: { code?: string; message?: string; params?: Record<string, string | number> } | undefined;
+      try {
+        const body = JSON.parse(await blob.text());
+        detail = typeof body?.detail === "object" ? body.detail : undefined;
+      } catch {
+        /* non-JSON error body */
+      }
+      const s = xhr.status;
+      const fallback = s === 413 ? "file_too_large" : s === 429 ? "rate_limited" : s === 503 ? "busy" : s === 504 ? "timeout" : "processing_failed";
+      reject(new AppError(detail?.code ?? fallback, detail?.params ?? {}, detail?.message));
+    };
+    xhr.send(form);
+  });
 }
 
 function withOptions(form: FormData, opts: Options) {
@@ -84,15 +109,15 @@ async function runServer(tool: Tool, files: File[], opts: Options, ctx: RunConte
     const form = withOptions(new FormData(), opts);
     form.append("file_a", files[0]);
     form.append("file_b", files[1]);
-    return [await post(endpoint, form, "result.pdf")];
+    return [await post(endpoint, form, "result.pdf", ctx.onProgress)];
   }
-  if (!files.length) return [await post(endpoint, withOptions(new FormData(), opts), "result.pdf")];
+  if (!files.length) return [await post(endpoint, withOptions(new FormData(), opts), "result.pdf", ctx.onProgress)];
   const outs: OutputFile[] = [];
   for (const [i, f] of files.entries()) {
-    if (files.length > 1) ctx.onProgress?.(`${i + 1} / ${files.length}`);
+    const batch = files.length > 1 ? { step: i + 1, steps: files.length } : {};
     const form = withOptions(new FormData(), opts);
     form.append("file", f);
-    outs.push(await post(endpoint, form, `${baseName(f.name)}.pdf`));
+    outs.push(await post(endpoint, form, `${baseName(f.name)}.pdf`, ctx.onProgress, batch));
   }
   return outs;
 }

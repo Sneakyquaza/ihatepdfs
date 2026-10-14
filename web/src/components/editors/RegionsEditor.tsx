@@ -15,7 +15,10 @@ export default function RegionsEditor({ files, onChange, t }: EditorProps<CropRe
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">{t.editors.regionsHint}</p>
+      <p className="text-sm text-muted">
+        {t.editors.regionsHint}
+        <span className="mt-1 block text-xs">{t.editors.keyboardHint}</span>
+      </p>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-semibold">{boxes.length} {t.editors.areas}</span>
         {selected && (
@@ -30,7 +33,7 @@ export default function RegionsEditor({ files, onChange, t }: EditorProps<CropRe
             // eslint-disable-next-line @next/next/no-img-element
             <img src={url} alt="" draggable={false} className="block max-h-[65vh] max-w-full" />
           )}
-          <BoxDrawOverlay boxes={boxes} onChange={setBoxes} selected={selected} onSelect={setSelected} boxClassName="bg-white/30 ring-2 ring-white backdrop-blur-md" />
+          <BoxDrawOverlay boxes={boxes} onChange={setBoxes} selected={selected} onSelect={setSelected} boxClassName="bg-white/30 ring-2 ring-white backdrop-blur-md" boxLabel={t.editors.area} />
         </div>
       </div>
     </div>

@@ -124,15 +124,15 @@ export default function OrganizeEditor({ files, onChange, t }: EditorProps<Organ
             <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
               {!it.deleted ? (
                 <>
-                  <button onClick={() => update(it.id, (i) => ({ ...i, rotation: (i.rotation + 90) % 360 }))} className="rounded-full bg-white p-1.5 shadow" aria-label={t.editors.rotate}>
+                  <button onClick={() => update(it.id, (i) => ({ ...i, rotation: (i.rotation + 90) % 360 }))} className="rounded-full bg-surface p-1.5 shadow" aria-label={t.editors.rotate}>
                     <RotateCw className="h-4 w-4" />
                   </button>
-                  <button onClick={() => update(it.id, (i) => ({ ...i, deleted: true }))} className="rounded-full bg-white p-1.5 text-brand shadow" aria-label={t.editors.delete}>
+                  <button onClick={() => update(it.id, (i) => ({ ...i, deleted: true }))} className="rounded-full bg-surface p-1.5 text-brand shadow" aria-label={t.editors.delete}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </>
               ) : (
-                <button onClick={() => update(it.id, (i) => ({ ...i, deleted: false }))} className="rounded-full bg-white p-1.5 shadow" aria-label={t.editors.restore}>
+                <button onClick={() => update(it.id, (i) => ({ ...i, deleted: false }))} className="rounded-full bg-surface p-1.5 shadow" aria-label={t.editors.restore}>
                   <Undo2 className="h-4 w-4" />
                 </button>
               )}

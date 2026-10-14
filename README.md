@@ -3,8 +3,9 @@
 43 outils, FR/EN. Architecture hybride : le léger tourne dans le navigateur, le lourd sur une API Python.
 
 ```
-web/  Next.js 16 (App Router, TS, Tailwind 4)  — UI + traitements navigateur (pdf-lib, pdf.js, canvas, IA WASM)
-api/  FastAPI (Docker)                          — Ghostscript, LibreOffice, ocrmypdf/Tesseract, pikepdf, PyMuPDF, WeasyPrint, OpenCV
+web/     Next.js 16 (App Router, TS, Tailwind 4) — UI + traitements navigateur (pdf-lib, pdf.js, canvas, IA WASM)
+api/     FastAPI (Docker)                       — Ghostscript, LibreOffice, ocrmypdf/Tesseract, pikepdf, PyMuPDF, OpenCV
+render/  Chromium headless isolé (Playwright)   — HTML/URL → PDF
 ```
 
 ## Lancer

@@ -42,7 +42,7 @@ export function EditorError({ error, t }: { error: unknown; t: Dict }) {
   if (!error) return null;
   const errors = t.errors as Record<string, string>;
   const text = error instanceof AppError && errors[error.code] ? fmt(errors[error.code], error.params) : errors.processing_failed;
-  return <p className="rounded-xl bg-red-50 p-4 text-sm font-medium text-red-700">{text}</p>;
+  return <p className="rounded-xl bg-red-50 p-4 text-sm font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">{text}</p>;
 }
 
 export function useElementWidth<T extends HTMLElement>() {
@@ -131,13 +131,13 @@ export function PageNav({ page, count, setPage, t }: { page: number; count: numb
   if (count <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-3 text-sm font-semibold">
-      <button disabled={page <= 0} onClick={() => setPage(page - 1)} className="rounded-full p-2 hover:bg-black/5 disabled:opacity-30" aria-label={t.editors.prev}>
+      <button disabled={page <= 0} onClick={() => setPage(page - 1)} className="rounded-full p-2 hover:bg-ink/5 disabled:opacity-30" aria-label={t.editors.prev}>
         <ChevronLeft className="h-5 w-5" />
       </button>
       <span>
         {t.editors.page} {page + 1} / {count}
       </span>
-      <button disabled={page >= count - 1} onClick={() => setPage(page + 1)} className="rounded-full p-2 hover:bg-black/5 disabled:opacity-30" aria-label={t.editors.next}>
+      <button disabled={page >= count - 1} onClick={() => setPage(page + 1)} className="rounded-full p-2 hover:bg-ink/5 disabled:opacity-30" aria-label={t.editors.next}>
         <ChevronRight className="h-5 w-5" />
       </button>
     </div>
@@ -213,7 +213,9 @@ export function BoxDrawOverlay({
   selected,
   onSelect,
   boxClassName,
+  boxLabel = "Zone",
 }: {
+  boxLabel?: string;
   boxes: DrawnBox[];
   onChange: (next: DrawnBox[]) => void;
   selected: string | null;
@@ -261,10 +263,19 @@ export function BoxDrawOverlay({
 
   return (
     <div data-overlay className="absolute inset-0 cursor-crosshair touch-none" onPointerDown={onDown}>
-      {boxes.map((b) => (
+      {boxes.map((b, i) => (
         <div
           key={b.id}
-          className={`absolute cursor-move ${boxClassName} ${selected === b.id ? "outline-2 outline-offset-2 outline-dashed outline-brand" : ""}`}
+          role="button"
+          tabIndex={0}
+          aria-label={`${boxLabel} ${i + 1}`}
+          aria-pressed={selected === b.id}
+          onFocus={() => onSelect(b.id)}
+          onKeyDown={(e) => handleBoxKey(e, b, (nb) => update(b.id, nb), () => {
+            onChange(boxes.filter((x) => x.id !== b.id));
+            onSelect(null);
+          })}
+          className={`absolute cursor-move focus:outline-none ${boxClassName} ${selected === b.id ? "outline-2 outline-offset-2 outline-dashed outline-brand" : ""}`}
           style={style(b)}
           onPointerDown={(e) => {
             onSelect(b.id);
@@ -282,4 +293,35 @@ export function BoxDrawOverlay({
       {draft && <div className={`pointer-events-none absolute opacity-70 ${boxClassName}`} style={style(draft)} />}
     </div>
   );
+}
+
+/**
+ * Keyboard control for a selected box: arrows move it (Shift = bigger steps), Alt+arrows resize it,
+ * Delete/Backspace removes it. Returns true when the key was handled.
+ */
+export function handleBoxKey(
+  e: React.KeyboardEvent,
+  box: FracBox,
+  onChange: (b: FracBox) => void,
+  onDelete?: () => void,
+  aspect?: number,
+): boolean {
+  if ((e.key === "Delete" || e.key === "Backspace") && onDelete) {
+    e.preventDefault();
+    onDelete();
+    return true;
+  }
+  const dirs: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const d = dirs[e.key];
+  if (!d) return false;
+  e.preventDefault();
+  const step = e.shiftKey ? 0.05 : 0.01;
+  if (e.altKey) {
+    const w = clamp(box.w + d[0] * step, 0.02, 1 - box.x);
+    const h = aspect ? w / aspect : clamp(box.h + d[1] * step, 0.01, 1 - box.y);
+    onChange({ ...box, w, h });
+  } else {
+    onChange({ ...box, x: clamp(box.x + d[0] * step, 0, 1 - box.w), y: clamp(box.y + d[1] * step, 0, 1 - box.h) });
+  }
+  return true;
 }

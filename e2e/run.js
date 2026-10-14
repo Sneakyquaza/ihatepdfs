@@ -25,6 +25,7 @@ const cases = [
   ["compress-pdf", ["a.pdf"]],
   ["word-to-pdf", ["doc.txt"]],
   ["pdf-to-word", ["a.pdf"]],
+  ["pdf-to-powerpoint", ["a.pdf"]],
   ["protect-pdf", ["a.pdf"], async (p) => p.fill("#opt-password", "x")],
   ["compare-pdf", ["a.pdf", "b.pdf"]],
   ["upscale-image", ["photo.png"]],
@@ -160,6 +161,61 @@ const cases = [
     console.log(`${external.length ? "FAIL" : "OK  "} third-party reqs   ${external.length ? external.slice(0, 3).join(" ") : "none"}`);
     if (!navOk || external.length) process.exitCode = 1;
     await pn.close();
+
+    const check = (ok, name, info) => {
+      console.log(`${ok ? "OK  " : "FAIL"} ${name.padEnd(18)} ${info}`);
+      if (!ok) process.exitCode = 1;
+    };
+
+    // chaining: merge result handed to "Compress PDF" without re-uploading
+    const pc = await ctx.newPage();
+    await pc.goto(`${BASE}/merge-pdf`);
+    await pc.setInputFiles('input[type="file"]', [F("a.pdf"), F("b.pdf")]);
+    const dl1 = pc.waitForEvent("download");
+    await pc.locator("aside button").last().click();
+    await dl1;
+    await pc.getByRole("button", { name: /Compresser PDF/ }).click();
+    await pc.waitForURL(/compress-pdf/);
+    const handed = await pc.getByText("merged.pdf").isVisible();
+    const dl2 = pc.waitForEvent("download", { timeout: 60000 }).then(() => true, () => false);
+    await pc.locator("aside button").last().click();
+    check(handed && (await dl2), "chain merge>comp", `handed=${handed}`);
+    await pc.close();
+
+    // theme toggle persists across reloads
+    const pt = await ctx.newPage();
+    await pt.goto(BASE);
+    await pt.getByRole("button", { name: /Thème : automatique/ }).click(); // -> light
+    await pt.getByRole("button", { name: /Thème : clair/ }).click(); // -> dark
+    const dark1 = await pt.evaluate(() => document.documentElement.dataset.theme);
+    await pt.reload();
+    const dark2 = await pt.evaluate(() => document.documentElement.dataset.theme);
+    await pt.getByRole("button", { name: /Thème : sombre/ }).click(); // -> back to system
+    check(dark1 === "dark" && dark2 === "dark", "dark theme", `after click=${dark1} after reload=${dark2}`);
+    await pt.close();
+
+    // mobile menu
+    const pm = await ctx.newPage();
+    await pm.setViewportSize({ width: 390, height: 844 });
+    await pm.goto(BASE);
+    await pm.getByRole("button", { name: "Menu" }).click();
+    check(await pm.getByRole("link", { name: "Outils image" }).isVisible(), "mobile menu", "");
+    await pm.close();
+
+    // keyboard: move a redaction area with the arrow keys
+    const pk = await ctx.newPage();
+    await pk.goto(`${BASE}/redact-pdf`);
+    await pk.setInputFiles('input[type="file"]', F("a.pdf"));
+    await pk.waitForSelector("[data-overlay]");
+    const ob = await pk.locator("[data-overlay]").boundingBox();
+    await pk.mouse.click(ob.x + ob.width * 0.3, ob.y + ob.height * 0.3);
+    const area = pk.getByRole("button", { name: "Zone 1" });
+    const before = await area.evaluate((el) => el.style.left);
+    await area.focus();
+    await pk.keyboard.press("Shift+ArrowRight");
+    const after = await area.evaluate((el) => el.style.left);
+    check(before !== after, "keyboard move", `${before} -> ${after}`);
+    await pk.close();
 
     const p = await ctx.newPage();
     await p.goto(BASE);

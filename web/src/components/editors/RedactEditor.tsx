@@ -33,7 +33,10 @@ export default function RedactEditor({ files, onChange, t }: EditorProps<Box[]>)
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">{t.editors.redactHint}</p>
+      <p className="text-sm text-muted">
+        {t.editors.redactHint}
+        <span className="mt-1 block text-xs">{t.editors.keyboardHint}</span>
+      </p>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-semibold">{boxes.length} {t.editors.areas}</span>
         {selected && (
@@ -59,6 +62,7 @@ export default function RedactEditor({ files, onChange, t }: EditorProps<Box[]>)
                 selected={selected}
                 onSelect={setSelected}
                 boxClassName="bg-black"
+                boxLabel={t.editors.area}
               />
             )}
           </PdfPage>

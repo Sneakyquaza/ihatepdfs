@@ -1,6 +1,7 @@
 import type { CropRect } from "../editorTypes";
 import { baseName, type Options, type OutputFile } from "../files";
 import { AppError } from "../errors";
+import type { Progress } from "./index";
 import { canvasToBlob } from "../pdfjs";
 
 type Fmt = "png" | "jpg" | "webp";
@@ -58,7 +59,7 @@ function drawScaled(img: CanvasImageSource & { width: number; height: number }, 
 
 // ---------------------------------------------------------------------------
 
-export async function removeBg(files: File[], o: Options, onProgress?: (msg: string) => void): Promise<OutputFile[]> {
+export async function removeBg(files: File[], o: Options, onProgress?: (p: Progress) => void): Promise<OutputFile[]> {
   const { removeBackground } = await import("@imgly/background-removal");
   const outs: OutputFile[] = [];
   for (const f of files) {
@@ -67,7 +68,8 @@ export async function removeBg(files: File[], o: Options, onProgress?: (msg: str
       publicPath: `${window.location.origin}/bg-model/`,
       output: { format: "image/png" },
       progress: (key: string, current: number, total: number) => {
-        if (key.startsWith("fetch") && total) onProgress?.(`${Math.round((current / total) * 100)}%`);
+        if (key.startsWith("fetch") && total) onProgress?.({ phase: "model", fraction: current / total });
+        else if (key.startsWith("compute")) onProgress?.({ phase: "work" });
       },
     });
     if (o.background === "transparent") {

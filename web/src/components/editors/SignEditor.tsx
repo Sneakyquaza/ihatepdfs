@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SignPlacement } from "@/lib/editorTypes";
-import { EditorError, type EditorProps, PageNav, PdfPage, startBoxDrag, uid, usePdfDoc } from "./shared";
+import { EditorError, type EditorProps, handleBoxKey, PageNav, PdfPage, startBoxDrag, uid, usePdfDoc } from "./shared";
 
 type Mode = "draw" | "type" | "upload";
 interface Placed extends SignPlacement {
@@ -117,7 +117,7 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
   };
 
   const tab = (m: Mode, label: string) => (
-    <button onClick={() => { setMode(m); setSig(null); }} className={`flex-1 rounded-lg py-2 text-sm font-semibold ${mode === m ? "bg-white shadow-sm" : "text-muted"}`}>
+    <button onClick={() => { setMode(m); setSig(null); }} className={`flex-1 rounded-lg py-2 text-sm font-semibold ${mode === m ? "bg-surface shadow-sm" : "text-muted"}`}>
       {label}
     </button>
   );
@@ -125,7 +125,10 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
   return (
     <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
       <div className="space-y-4">
-        <p className="text-sm text-muted">{t.editors.signHint}</p>
+        <p className="text-sm text-muted">
+        {t.editors.signHint}
+        <span className="mt-1 block text-xs">{t.editors.keyboardHint}</span>
+      </p>
         <div className="flex gap-1 rounded-xl bg-canvas p-1">
           {tab("draw", t.editors.signDraw)}
           {tab("type", t.editors.signType)}
@@ -146,7 +149,7 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
               ref={padRef}
               width={600}
               height={240}
-              className="w-full touch-none rounded-xl border-2 border-dashed border-black/15 bg-white"
+              className="w-full touch-none rounded-xl border-2 border-dashed border-line bg-surface"
               onPointerDown={(e) => {
                 drawing.current = true;
                 e.currentTarget.setPointerCapture(e.pointerId);
@@ -176,9 +179,9 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
 
         {mode === "type" && (
           <div className="space-y-2">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.editors.signName} className="w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand" />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.editors.signName} className="w-full rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-brand" />
             {FONTS.map((f, i) => (
-              <button key={f} onClick={() => setFont(i)} className={`block w-full truncate rounded-lg border px-3 py-2 text-left text-2xl ${font === i ? "border-brand" : "border-black/10"}`} style={{ fontFamily: f, color: ink }}>
+              <button key={f} onClick={() => setFont(i)} className={`block w-full truncate rounded-lg border px-3 py-2 text-left text-2xl ${font === i ? "border-brand" : "border-line"}`} style={{ fontFamily: f, color: ink }}>
                 {name || "Signature"}
               </button>
             ))}
@@ -190,7 +193,7 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
         )}
 
         {sig && (
-          <div className="checker grid h-24 place-items-center rounded-xl p-2 ring-1 ring-black/10">
+          <div className="checker grid h-24 place-items-center rounded-xl p-2 ring-1 ring-line">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={sig.url} alt="" className="max-h-full max-w-full" />
           </div>
@@ -222,7 +225,19 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
                 {placed.filter((p) => p.page === page).map((p) => (
                   <div
                     key={p.id}
-                    className={`absolute cursor-move ${selected === p.id ? "outline-2 outline-dashed outline-brand" : "hover:outline hover:outline-1 hover:outline-brand/50"}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t.editors.signAdd}
+                    onFocus={() => setSelected(p.id)}
+                    onKeyDown={(e) =>
+                      handleBoxKey(
+                        e, p,
+                        (b) => setPlaced((all) => all.map((x) => (x.id === p.id ? { ...x, ...b } : x))),
+                        () => { setPlaced((all) => all.filter((x) => x.id !== p.id)); setSelected(null); },
+                        (p.aspect * g.ptH) / g.ptW,
+                      )
+                    }
+                    className={`absolute cursor-move focus:outline-none ${selected === p.id ? "outline-2 outline-dashed outline-brand" : "hover:outline hover:outline-1 hover:outline-brand/50"}`}
                     style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%`, width: `${p.w * 100}%`, height: `${p.h * 100}%` }}
                     onPointerDown={(e) => {
                       setSelected(p.id);

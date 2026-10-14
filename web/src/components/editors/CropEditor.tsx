@@ -106,7 +106,7 @@ export default function CropEditor({ files, onChange, t }: EditorProps<CropRect>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">{t.editors.cropRatio}</span>
         {RATIOS.map(([label, r]) => (
-          <button key={label} onClick={() => applyRatio(r)} className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${ratio === r ? "bg-ink text-white" : "bg-canvas hover:bg-black/5"}`}>
+          <button key={label} onClick={() => applyRatio(r)} className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${ratio === r ? "bg-ink text-canvas" : "bg-canvas hover:bg-ink/5"}`}>
             {r === null ? t.editors.cropFree : label}
           </button>
         ))}

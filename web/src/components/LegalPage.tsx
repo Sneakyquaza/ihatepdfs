@@ -26,7 +26,7 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
     <article className="mx-auto max-w-3xl px-4 py-12">
       <h1 className="text-4xl font-extrabold tracking-tight">{doc.title}</h1>
       <p className="mt-2 text-sm text-muted">{doc.updated}</p>
-      <div className="mt-8 space-y-8 rounded-3xl bg-white p-6 shadow-sm sm:p-8">
+      <div className="mt-8 space-y-8 rounded-3xl bg-surface p-6 shadow-sm sm:p-8">
         {doc.sections.map((s) => (
           <section key={s.title}>
             <h2 className="text-lg font-bold">{s.title}</h2>

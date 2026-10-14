@@ -48,7 +48,7 @@ const C = {
   indigo: "#4263eb",
   pink: "#d6336c",
   teal: "#0c8599",
-  gray: "#495057",
+  gray: "#64748b", // slate: readable on both light and dark surfaces
 };
 
 const pagesOpt: OptionDef = { type: "text", key: "pages", default: "", placeholder: "1,3-5" };
@@ -239,6 +239,11 @@ export const TOOLS: Tool[] = [
     ],
   },
 ];
+
+/** Per-file upload cap of the API (MAX_UPLOAD_MB); checked before sending. */
+export const SERVER_MAX_MB = 100;
+/** Above this total, in-browser tools warn that low-end devices may struggle. */
+export const CLIENT_WARN_MB = 200;
 
 export const TOOL_MAP = Object.fromEntries(TOOLS.map((t) => [t.id, t])) as Record<string, Tool>;
 

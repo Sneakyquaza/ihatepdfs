@@ -187,21 +187,35 @@ async def pdf_to_powerpoint(file: UploadFile = File(...)):
     return await handle(work)
 
 
+RENDER_URL = os.getenv("RENDER_URL", "http://render:8000")
+
+
 @app.post("/api/html-to-pdf")
 async def html_to_pdf(file: UploadFile | None = File(None), url: str | None = Form(None)):
+    """Delegated to the isolated Chromium service (render/), which enforces its own network policy."""
+    import httpx
+
     if not file and not url:
         raise ApiError(400, "missing_input", "Provide an HTML file or a URL")
 
     async def work(ws: Workspace):
-        out = ws.file(".pdf")
         if url:
-            assert_public_url(url)
-            await run_job(jobs.html_to_pdf, str(out), url, None, timeout=120)
-            name = "webpage.pdf"
+            assert_public_url(url)  # fast, friendly error; render/ re-checks every request anyway
+            data, files, name = {"url": url}, None, "webpage.pdf"
         else:
             src = await save_upload(file, ws, {".html", ".htm"})
-            await run_job(jobs.html_to_pdf, str(out), None, str(src), timeout=120)
-            name = f"{stem_of(file)}.pdf"
+            data, files, name = {}, {"file": ("page.html", src.read_bytes(), "text/html")}, f"{stem_of(file)}.pdf"
+        try:
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.post(f"{RENDER_URL}/render", data=data, files=files)
+        except httpx.HTTPError:
+            raise ApiError(502, "processing_failed", "Renderer unavailable")
+        if resp.status_code != 200:
+            detail = resp.json().get("detail", {}) if resp.headers.get("content-type", "").startswith("application/json") else {}
+            code = detail.get("code", "processing_failed") if isinstance(detail, dict) else "processing_failed"
+            raise ApiError(resp.status_code if resp.status_code < 500 else 502, code, code)
+        out = ws.file(".pdf")
+        out.write_bytes(resp.content)
         return send(out, name, ws)
 
     return await handle(work)

@@ -19,6 +19,26 @@ services:
       - /tmp:size=4g
     mem_limit: 8g
     cpus: 6
+    networks: [default, render]
+    depends_on:
+      - render
+    restart: unless-stopped
+    logging: *logging
+
+  # Headless Chromium for HTML/URL -> PDF. Renders untrusted pages, so: no access to the API's files,
+  # read-only root, no capabilities, own network (internet egress only via its IP-pinning filter).
+  render:
+    build: ./render
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+      - /home/pwuser:size=256m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 512
+    networks: [render]
     restart: unless-stopped
     logging: *logging
 
@@ -33,3 +53,6 @@ services:
       - api
     restart: unless-stopped
     logging: *logging
+
+networks:
+  render:
