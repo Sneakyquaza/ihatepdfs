@@ -22,8 +22,8 @@ export default function OrganizeEditor({ files, onChange, t }: EditorProps<Organ
   const [overId, setOverId] = useState<string | null>(null);
 
   useEffect(() => {
+    // the editor is remounted when files change (key in ToolRunner), so state starts fresh
     let alive = true;
-    setLoading(true);
     (async () => {
       const all: Item[] = [];
       for (const [fi, f] of files.entries()) {

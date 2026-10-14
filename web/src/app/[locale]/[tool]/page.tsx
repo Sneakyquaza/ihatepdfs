@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ToolRunner } from "@/components/ToolRunner";
 import { getDict, isLocale, LOCALES } from "@/i18n";
+import { alternates } from "@/lib/site";
 import { TOOL_MAP, TOOLS } from "@/lib/tools";
 
 type Params = Promise<{ locale: string; tool: string }>;
@@ -17,7 +18,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return {
     title: `${name} — iHatePDFs`,
     description: desc,
-    alternates: { languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}/${tool}`])) },
+    alternates: { canonical: `/${locale}/${tool}`, languages: alternates(`/${tool}`) },
+    openGraph: { title: `${name} — iHatePDFs`, description: desc },
   };
 }
 

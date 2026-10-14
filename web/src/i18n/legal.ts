@@ -56,8 +56,7 @@ export const LEGAL: Record<Locale, { legal: LegalDoc; privacy: LegalDoc }> = {
         {
           title: "Données collectées",
           body: [
-            "Aucune donnée personnelle. Pas de compte, pas de cookie, pas de statistiques de visite, pas de publicité, aucun traceur. Les polices et scripts sont servis par ce site lui-même.",
-            "Exception : au premier usage, l'outil « Supprimer l'arrière-plan » télécharge son modèle d'IA depuis le serveur d'IMG.LY (staticimgly.com), qui voit donc votre adresse IP. Votre image, elle, n'est jamais envoyée.",
+            "Aucune donnée personnelle. Pas de compte, pas de cookie, pas de statistiques de visite, pas de publicité, aucun traceur. Les polices, scripts et modèles d'IA sont servis par ce site lui-même : aucune requête vers un service tiers.",
           ],
         },
         {
@@ -116,8 +115,7 @@ export const LEGAL: Record<Locale, { legal: LegalDoc; privacy: LegalDoc }> = {
         {
           title: "Data collected",
           body: [
-            "No personal data. No account, no cookie, no analytics, no ads, no trackers. Fonts and scripts are served by this site itself.",
-            "Exception: on first use, the “Remove background” tool downloads its AI model from IMG.LY's server (staticimgly.com), which therefore sees your IP address. Your image itself is never sent.",
+            "No personal data. No account, no cookie, no analytics, no ads, no trackers. Fonts, scripts and AI models are served by this site itself: no request to any third-party service.",
           ],
         },
         {

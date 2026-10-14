@@ -10,7 +10,7 @@ function preferredLocale(req: NextRequest): string {
   return DEFAULT_LOCALE;
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (isLocale(pathname.split("/")[1] ?? "")) return NextResponse.next();
   const url = req.nextUrl.clone();
@@ -19,6 +19,6 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // skip API proxy, Next internals and any file with an extension
-  matcher: ["/((?!api|_next|.*\\..*).*)"],
+  // skip API proxy, Next internals, self-hosted model chunks (no extension) and any file with an extension
+  matcher: ["/((?!api|_next|bg-model|.*\\..*).*)"],
 };

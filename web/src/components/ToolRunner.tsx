@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmt, getDict, type Locale } from "@/i18n";
 import type { EditorData } from "@/lib/editorTypes";
 import { downloadBlob, extOf, formatBytes, type Options, type OutputFile, zipOutputs } from "@/lib/files";
@@ -56,6 +56,8 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
   const [error, setError] = useState<{ code: string; text: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // stable File objects for result previews (FileThumb keys its object URL on the instance)
+  const outputFiles = useMemo(() => outputs.map((o) => new File([o.blob], o.name, { type: o.blob.type })), [outputs]);
 
   const addFiles = useCallback(
     (list: FileList | File[]) => {
@@ -227,7 +229,7 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
             {outputs.map((o, i) => (
               <li key={i} className="flex items-center gap-3 py-3">
                 {o.blob.type.startsWith("image/") ? (
-                  <FileThumb file={new File([o.blob], o.name, { type: o.blob.type })} className="h-12 w-12 rounded-md" />
+                  <FileThumb file={outputFiles[i]} className="h-12 w-12 rounded-md" />
                 ) : (
                   <span className="grid h-12 w-12 place-items-center rounded-md bg-canvas text-xs font-bold uppercase text-muted">{extOf(o.name)}</span>
                 )}
@@ -278,7 +280,8 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
       <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_340px]">
         <section className="min-w-0 rounded-3xl bg-white p-4 shadow-sm sm:p-6">
           {Editor ? (
-            <Editor files={files} onChange={setEditorData} t={t} />
+            // remount on new files so editors start from a clean state
+            <Editor key={files.map((f) => `${f.name}:${f.size}:${f.lastModified}`).join("|")} files={files} onChange={setEditorData} t={t} />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
               {files.map((f, i) => (

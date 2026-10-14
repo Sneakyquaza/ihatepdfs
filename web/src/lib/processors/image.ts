@@ -63,6 +63,8 @@ export async function removeBg(files: File[], o: Options, onProgress?: (msg: str
   const outs: OutputFile[] = [];
   for (const f of files) {
     const cut = await removeBackground(f, {
+      // model + runtime are self-hosted (scripts/fetch-bg-model.mjs): no third-party request
+      publicPath: `${window.location.origin}/bg-model/`,
       output: { format: "image/png" },
       progress: (key: string, current: number, total: number) => {
         if (key.startsWith("fetch") && total) onProgress?.(`${Math.round((current / total) * 100)}%`);

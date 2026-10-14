@@ -143,6 +143,12 @@ const cases = [
 
     // reaching remove-bg from the home grid must work too (its CSP differs, see next.config.ts)
     const pn = await ctx.newPage();
+    const origin = new URL(BASE).origin;
+    const external = [];
+    pn.on("request", (r) => {
+      const u = r.url();
+      if (!u.startsWith(origin) && !u.startsWith("blob:") && !u.startsWith("data:")) external.push(u);
+    });
     await pn.goto(BASE);
     await pn.getByRole("link", { name: /Supprimer l'arrière-plan/ }).first().click();
     await pn.waitForURL(/remove-bg/);
@@ -151,7 +157,8 @@ const cases = [
     await pn.locator("aside button").last().click();
     const navOk = await dlNav;
     console.log(`${navOk ? "OK  " : "FAIL"} remove-bg via home  downloaded=${navOk}`);
-    if (!navOk) process.exitCode = 1;
+    console.log(`${external.length ? "FAIL" : "OK  "} third-party reqs   ${external.length ? external.slice(0, 3).join(" ") : "none"}`);
+    if (!navOk || external.length) process.exitCode = 1;
     await pn.close();
 
     const p = await ctx.newPage();

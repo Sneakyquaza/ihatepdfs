@@ -3,7 +3,7 @@
 43 outils, FR/EN. Architecture hybride : le léger tourne dans le navigateur, le lourd sur une API Python.
 
 ```
-web/  Next.js 15 (App Router, TS, Tailwind 4)  — UI + traitements navigateur (pdf-lib, pdf.js, canvas, IA WASM)
+web/  Next.js 16 (App Router, TS, Tailwind 4)  — UI + traitements navigateur (pdf-lib, pdf.js, canvas, IA WASM)
 api/  FastAPI (Docker)                          — Ghostscript, LibreOffice, ocrmypdf/Tesseract, pikepdf, PyMuPDF, WeasyPrint, OpenCV
 ```
 
@@ -40,6 +40,7 @@ cd web && npm install && npm run dev
 ## Config API (env)
 
 `MAX_UPLOAD_MB` (100), `MAX_HEAVY_JOBS` (4 jobs lourds simultanés), `MAX_QUEUE` (20 en attente, au-delà → 503),
+`JOB_TIMEOUT_S` (300) / `JOB_MEMORY_MB` (4096) par traitement, `MAX_PAGES` (500), `MAX_OCR_PAGES` (100),
 `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_S` (60 requêtes / 10 min par IP → 429), `RATE_LIMIT_CONCURRENT` (3 par IP).
 L'IP client vient de l'en-tête `X-Client-IP` posé (écrasé) par Apache : le client ne peut pas le falsifier.
 Les fichiers serveur vivent dans un dossier temporaire supprimé après la réponse. HTML→PDF bloque les URL vers des IP privées (y compris via redirection).

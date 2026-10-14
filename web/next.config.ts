@@ -11,7 +11,7 @@ const csp = (scriptExtra = "") => [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self' blob: data: https://staticimgly.com",
+  "connect-src 'self' blob: data:",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
@@ -38,6 +38,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
+      // background-removal chunks are content-addressed (named by sha256): cache forever
+      { source: "/bg-model/:file([0-9a-f]{64})", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
       // the background-removal model runtime (protobufjs) compiles code with new Function: allow eval on that page only
       { source: "/:locale/remove-bg", headers: [{ key: "Content-Security-Policy", value: csp(" 'unsafe-eval'") }] },
     ];

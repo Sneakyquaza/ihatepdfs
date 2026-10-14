@@ -3,19 +3,13 @@
 import { Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CropRect } from "@/lib/editorTypes";
+import { useObjectUrl } from "@/lib/useObjectUrl";
 import { BoxDrawOverlay, type DrawnBox, type EditorProps } from "./shared";
 
 export default function RegionsEditor({ files, onChange, t }: EditorProps<CropRect[]>) {
-  const [url, setUrl] = useState("");
+  const url = useObjectUrl(files[0]);
   const [boxes, setBoxes] = useState<DrawnBox[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-
-  useEffect(() => {
-    const u = URL.createObjectURL(files[0]);
-    setUrl(u);
-    setBoxes([]);
-    return () => URL.revokeObjectURL(u);
-  }, [files]);
 
   useEffect(() => onChange(boxes.map(({ x, y, w, h }) => ({ x, y, w, h }))), [boxes, onChange]);
 

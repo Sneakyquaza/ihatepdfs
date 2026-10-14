@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Header } from "@/components/Header";
 import { getDict, isLocale, LOCALES } from "@/i18n";
+import { alternates, SITE_URL } from "@/lib/site";
 import "../globals.css";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -20,7 +21,9 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   return {
     title: t.meta.title,
     description: t.meta.description,
-    alternates: { languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}`])) },
+    metadataBase: new URL(SITE_URL),
+    alternates: { canonical: `/${locale}`, languages: alternates("") },
+    openGraph: { type: "website", siteName: "iHatePDFs", title: t.meta.title, description: t.meta.description, locale },
   };
 }
 

@@ -14,15 +14,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
-COPY requirements.txt .
-# pdf2docx pulls opencv-python-headless; swap it for the contrib build (adds dnn_superres for upscaling).
-RUN pip install -r requirements.txt \
-    && pip uninstall -y opencv-python-headless opencv-python \
-    && pip install "opencv-contrib-python-headless>=4.10,<5"
+COPY requirements.lock .
+# Exact, complete dependency set (see lock.sh). --no-deps: the lock already lists every package, and
+# it carries opencv-contrib (needed for dnn_superres) instead of the opencv-python-headless pdf2docx asks for.
+RUN pip install --no-deps -r requirements.lock
 
+# FSRCNN super-resolution models, pinned to a commit and checked against known hashes
+ARG FSRCNN_COMMIT=6a4812c4ef1c4f5947d79beafa32a05a6eb4a94d
 RUN mkdir -p /models \
-    && for s in 2 4; do curl -fsSL -o /models/FSRCNN_x$s.pb \
-         https://raw.githubusercontent.com/Saafke/FSRCNN_Tensorflow/master/models/FSRCNN_x$s.pb; done
+    && curl -fsSL -o /models/FSRCNN_x2.pb https://raw.githubusercontent.com/Saafke/FSRCNN_Tensorflow/$FSRCNN_COMMIT/models/FSRCNN_x2.pb \
+    && curl -fsSL -o /models/FSRCNN_x4.pb https://raw.githubusercontent.com/Saafke/FSRCNN_Tensorflow/$FSRCNN_COMMIT/models/FSRCNN_x4.pb \
+    && printf '%s  %s\n' \
+         366b33f0084c7b3f2bf6724f0a2c77bca94fcec9d7b6d72389d330073b380d5c /models/FSRCNN_x2.pb \
+         5c68d18db561aed8ead4ffedf1b897ea615baaf60ebf6c35f8e641f8fa4a21bf /models/FSRCNN_x4.pb \
+       | sha256sum -c -
 
 COPY --chmod=755 app ./app
 

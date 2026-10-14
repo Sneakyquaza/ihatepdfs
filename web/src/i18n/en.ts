@@ -104,7 +104,7 @@ export const en: Dict = {
     moveUp: "Move up",
     moveDown: "Move down",
     options: "Options",
-    firstRunModel: "First run: downloading the AI model (~40 MB), cached afterwards.",
+    firstRunModel: "First run: downloading the AI model (~100 MB) from this site, cached afterwards.",
     or: "or",
   },
   options: {
@@ -235,6 +235,8 @@ export const en: Dict = {
     cropHint: "Drag the frame or its corners to crop.",
   },
   errors: {
+    too_many_pages: "Too many pages (max {max}). Split the PDF first.",
+    too_complex: "File too heavy or complex to process.",
     encrypted: "“{name}” is password protected. Unlock it first.",
     invalid_pdf: "“{name}” is not a valid PDF or is damaged. Try “Repair PDF”.",
     unsupported_type: "Unsupported file type. Accepted formats: {allowed}.",

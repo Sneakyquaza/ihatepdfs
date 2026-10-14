@@ -44,7 +44,7 @@ New tools need a case in `e2e/run.js` (`[id, fixtures, optional setup(page)]`). 
 
 Two services behind Apache (vhosts in `/etc/apache2/sites-available/ihatepdfs*.conf`, TLS via certbot; local copies in `deploy/*.conf` are gitignored — the server's proxy config is deliberately not published):
 
-- `web/` — Next.js 15 App Router, all pages statically generated under `/[locale]/...`. `src/middleware.ts` redirects locale-less paths. `/api/*` is proxied to the FastAPI service by a rewrite in `next.config.ts`; **`API_URL` is baked in at build time** (Docker build arg `http://api:8000`), so the browser is always same-origin.
+- `web/` — Next.js 16 App Router (Turbopack), all pages statically generated under `/[locale]/...`. `src/proxy.ts` (Next 16's name for middleware) redirects locale-less paths; its matcher must keep excluding `/api`, `/_next`, `/bg-model` and files with extensions. `/api/*` is proxied to the FastAPI service by a rewrite in `next.config.ts`; **`API_URL` is baked in at build time** (Docker build arg `http://api:8000`), so the browser is always same-origin.
 - `api/` — FastAPI, single uvicorn worker (rate-limit and queue state are in-process). Heavy lifting via CLI tools/libs: Ghostscript, LibreOffice (`soffice`), ocrmypdf/Tesseract, pikepdf, PyMuPDF, pdf2docx, WeasyPrint, OpenCV `dnn_superres` (FSRCNN models in `/models`).
 
 ### Tool registry drives everything
@@ -68,6 +68,8 @@ pdf.js (`lib/pdfjs.ts`) transfers/detaches the buffer it is given — always pas
 
 ### API conventions (`api/app/`)
 
+Layering: `main.py` (HTTP endpoints, thin) → `jobs.py` (all CPU-heavy library code, module-level functions taking plain values) run through `isolate.run_job()`, which executes each job in a process forked from a forkserver that preloaded `app.jobs`, with `JOB_TIMEOUT_S` (504 `timeout`, child killed) and an `RLIMIT_AS` cap of `JOB_MEMORY_MB`. Never call PyMuPDF/pikepdf/pdf2docx/WeasyPrint/OpenCV directly from an endpoint — add a job. Every uploaded PDF goes through `save_pdf()` (runs `jobs.check_pages`: rejects encrypted, empty and > `MAX_PAGES` / `MAX_OCR_PAGES`), except repair/unlock which must accept such files. External binaries (gs, soffice, ocrmypdf, tesseract) keep using `util.run()` with its own timeout.
+
 Every endpoint wraps its work in `handle(work)`: creates a per-request `Workspace` temp dir, enforces the global `HEAVY` semaphore and `MAX_QUEUE` (503), and cleans up on error; `send()` removes the dir after the response is streamed. Uploads go through `save_upload()` (extension allow-list, size cap). Shell tools run via `run()` (thread + timeout, stderr tail in the error). Errors are raised as `ApiError(status, code, message, **params)` (`errors.py`) → `{"detail": {"code", "message", "params"}}`; global handlers turn `pikepdf.PasswordError` into `encrypted`, broken PDFs into `invalid_pdf` and anything else into `processing_failed`. The frontend never shows API text: `post()` throws `AppError(code, params)` (`lib/errors.ts`) and the UI renders `t.errors[code]` — add a translation in both dicts for every new code. Client processors throw `AppError` too.
 
 `ratelimit.py`: per-IP sliding window + per-IP concurrency. The client IP comes from `X-Client-IP`, which Apache **sets (overwrites)** — don't switch to `X-Forwarded-For`. Rejections drain the request body first; replying mid-upload makes the Next proxy return a 500.
@@ -82,10 +84,15 @@ Set in `web/next.config.ts` (not Apache): CSP, HSTS, etc. The in-browser AI need
 
 Legal notice / privacy texts live in `web/src/i18n/legal.ts`; keep the privacy page truthful when adding anything that contacts a third party or stores data.
 
+### Background-removal model
+
+`web/scripts/fetch-bg-model.mjs` (prebuild/predev) downloads the IMG.LY model + ONNX runtime for `@imgly/background-removal` into `public/bg-model/` (gitignored, ~100 MB), verifying the pinned manifest hash and every chunk's sha256; the processor sets `publicPath` to it. Bumping the npm package requires updating `VERSION` and `MANIFEST_SHA256` there.
+
 ### Docker gotchas
 
 - API base image must stay on Debian trixie: ocrmypdf refuses Ghostscript 10.0.0–10.02.0 (bookworm) for `--skip-text`/PDF/A.
-- pdf2docx pulls `opencv-python-headless`; the Dockerfile swaps it for `opencv-contrib-python-headless` (needed for `dnn_superres`). Keep it `<5`.
+- Python deps are installed from `api/requirements.lock` with `--no-deps` (complete, exact set). Edit `requirements.txt`, then run `api/lock.sh` to regenerate the lock. The lock carries `opencv-contrib-python-headless` (needed for `dnn_superres`) instead of the `opencv-python-headless` pdf2docx asks for — that's why `--no-deps`.
+- FSRCNN models are downloaded at a pinned commit and checked with `sha256sum -c` in the Dockerfile.
 - Source files on this host are created with a restrictive umask: `COPY --chmod=755` (api) and `--chown=node:node` (web) are required, or the non-root containers can't read them.
 
 ## Licensing / deployment constraint

@@ -1,7 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SignPlacement } from "@/lib/editorTypes";
 import { EditorError, type EditorProps, PageNav, PdfPage, startBoxDrag, uid, usePdfDoc } from "./shared";
 
@@ -46,7 +46,8 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
   const [ink, setInk] = useState(INK[0]);
   const [name, setName] = useState("");
   const [font, setFont] = useState(0);
-  const [sig, setSig] = useState<{ url: string; aspect: number } | null>(null);
+  // drawn/uploaded signature; a typed one is derived from the inputs below
+  const [manualSig, setSig] = useState<{ url: string; aspect: number } | null>(null);
   const [placed, setPlaced] = useState<Placed[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const padRef = useRef<HTMLCanvasElement>(null);
@@ -71,9 +72,8 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
   };
 
   // ----- typed signature -----
-  useEffect(() => {
-    if (mode !== "type") return;
-    if (!name.trim()) return setSig(null);
+  const typedSig = useMemo(() => {
+    if (mode !== "type" || !name.trim()) return null;
     const c = document.createElement("canvas");
     c.width = 900;
     c.height = 240;
@@ -82,8 +82,9 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
     ctx.fillStyle = ink;
     ctx.textBaseline = "middle";
     ctx.fillText(name, 20, 120, 860);
-    setSig(trimCanvas(c));
+    return trimCanvas(c);
   }, [mode, name, font, ink]);
+  const sig = mode === "type" ? typedSig : manualSig;
 
   const onUpload = async (file: File) => {
     const bmp = await createImageBitmap(file);

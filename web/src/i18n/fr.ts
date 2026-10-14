@@ -102,7 +102,7 @@ export const fr = {
     moveUp: "Monter",
     moveDown: "Descendre",
     options: "Options",
-    firstRunModel: "Premier lancement : téléchargement du modèle IA (~40 Mo), mis en cache ensuite.",
+    firstRunModel: "Premier lancement : téléchargement du modèle IA (~100 Mo) depuis ce site, mis en cache ensuite.",
     or: "ou",
   },
   options: {
@@ -233,6 +233,8 @@ export const fr = {
     cropHint: "Glissez le cadre ou ses coins pour recadrer.",
   },
   errors: {
+    too_many_pages: "Trop de pages (maximum {max}). Divisez le PDF d'abord.",
+    too_complex: "Fichier trop lourd ou trop complexe à traiter.",
     encrypted: "« {name} » est protégé par un mot de passe. Déverrouillez-le d'abord.",
     invalid_pdf: "« {name} » n'est pas un PDF valide ou il est endommagé. Essayez « Réparer PDF ».",
     unsupported_type: "Type de fichier non pris en charge. Formats acceptés : {allowed}.",

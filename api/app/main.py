@@ -1,39 +1,26 @@
-"""Server-side processing for the heavy tools (conversions, compression, OCR, security, compare, upscale)."""
+"""HTTP layer for the server-side tools. Heavy library work runs in isolated processes (see isolate.py)."""
 
 import asyncio
-import difflib
 import logging
 import os
 import re
 from pathlib import Path
 from typing import Awaitable, Callable
 
-import pymupdf
-import pikepdf
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
+from . import jobs
 from .errors import ApiError
+from .isolate import run_job
 from .ratelimit import rate_limit_middleware
-from .redact import PRESETS, parse_boxes, redact
+from .redact import PRESETS, parse_boxes
 from .util import Workspace, assert_public_url, run, save_upload, send, stem_of
 
 app = FastAPI(title="iHatePDFs API", docs_url=None, redoc_url=None, openapi_url=None)
 app.middleware("http")(rate_limit_middleware)
 
 log = logging.getLogger("uvicorn.error")
-
-
-@app.exception_handler(pikepdf.PasswordError)
-async def _encrypted(_: Request, __: Exception):
-    return JSONResponse({"detail": {"code": "encrypted", "message": "PDF is password protected"}}, status_code=400)
-
-
-@app.exception_handler(pikepdf.PdfError)
-@app.exception_handler(pymupdf.FileDataError)
-async def _invalid_pdf(_: Request, exc: Exception):
-    log.warning("invalid PDF: %s", exc)
-    return JSONResponse({"detail": {"code": "invalid_pdf", "message": "Damaged or invalid PDF"}}, status_code=400)
 
 
 @app.exception_handler(Exception)
@@ -46,6 +33,7 @@ PDF = {".pdf"}
 OFFICE = {".doc", ".docx", ".odt", ".rtf", ".txt", ".ppt", ".pptx", ".odp", ".xls", ".xlsx", ".ods", ".csv"}
 IMAGES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 OCR_LANGS = {"eng", "fra", "deu", "spa", "ita", "por", "nld"}
+MAX_OCR_PAGES = int(os.getenv("MAX_OCR_PAGES", "100"))
 
 # Limit concurrent heavy jobs so one burst can't exhaust CPU/RAM, and cap the queue behind them.
 HEAVY = asyncio.Semaphore(int(os.getenv("MAX_HEAVY_JOBS", "2")))
@@ -73,6 +61,20 @@ async def handle(work: Callable[[Workspace], Awaitable[Response]]) -> Response:
             _queued -= 1
 
 
+async def save_pdf(upload: UploadFile, ws: Workspace, max_pages: int = jobs.MAX_PAGES) -> str:
+    """Save an uploaded PDF and reject encrypted/empty/oversized ones before any tool touches it."""
+    src = await save_upload(upload, ws, PDF)
+    await run_job(jobs.check_pages, str(src), max_pages, timeout=30)
+    return str(src)
+
+
+def parse_langs(lang: str) -> str:
+    langs = [l for l in lang.split("+") if l]
+    if not langs or any(l not in OCR_LANGS for l in langs):
+        raise ApiError(400, "invalid_option", "Invalid language")
+    return "+".join(langs)
+
+
 @app.get("/api/health")
 async def health():
     return {"ok": True}
@@ -81,6 +83,7 @@ async def health():
 # ---------- Compression / repair ----------
 
 GS_LEVELS = {"low": "/printer", "recommended": "/ebook", "extreme": "/screen"}
+GS = ["gs", "-sDEVICE=pdfwrite", "-dNOPAUSE", "-dQUIET", "-dBATCH", "-dSAFER"]
 
 
 @app.post("/api/compress-pdf")
@@ -89,14 +92,11 @@ async def compress_pdf(file: UploadFile = File(...), level: str = Form("recommen
         raise ApiError(400, "invalid_option", "Invalid level")
 
     async def work(ws: Workspace):
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws)
         out = ws.file(".pdf")
-        await run([
-            "gs", "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.5", f"-dPDFSETTINGS={GS_LEVELS[level]}",
-            "-dNOPAUSE", "-dQUIET", "-dBATCH", "-dSAFER", "-dDetectDuplicateImages=true",
-            f"-sOutputFile={out}", str(src),
-        ])
-        best = out if out.stat().st_size < src.stat().st_size else src
+        await run([*GS, "-dCompatibilityLevel=1.5", f"-dPDFSETTINGS={GS_LEVELS[level]}",
+                   "-dDetectDuplicateImages=true", f"-sOutputFile={out}", src])
+        best = out if out.stat().st_size < os.path.getsize(src) else Path(src)
         return send(best, f"{stem_of(file)}_compressed.pdf", ws)
 
     return await handle(work)
@@ -105,17 +105,35 @@ async def compress_pdf(file: UploadFile = File(...), level: str = Form("recommen
 @app.post("/api/repair-pdf")
 async def repair_pdf(file: UploadFile = File(...)):
     async def work(ws: Workspace):
+        # no page check here: the whole point is to accept broken files
         src = await save_upload(file, ws, PDF)
         out = ws.file(".pdf")
-        try:
-            def _repair():
-                with pikepdf.open(src) as pdf:
-                    pdf.save(out)
-            await asyncio.to_thread(_repair)
-        except Exception:
-            await run(["gs", "-sDEVICE=pdfwrite", "-dNOPAUSE", "-dQUIET", "-dBATCH", "-dSAFER",
-                       f"-sOutputFile={out}", str(src)])
+        if not await run_job(jobs.repair, str(src), str(out)):
+            await run([*GS, f"-sOutputFile={out}", str(src)])
         return send(out, f"{stem_of(file)}_repaired.pdf", ws)
+
+    return await handle(work)
+
+
+@app.post("/api/grayscale-pdf")
+async def grayscale_pdf(file: UploadFile = File(...)):
+    async def work(ws: Workspace):
+        src = await save_pdf(file, ws)
+        out = ws.file(".pdf")
+        await run([*GS, "-sColorConversionStrategy=Gray", "-dProcessColorModel=/DeviceGray", "-dOverrideICC",
+                   f"-sOutputFile={out}", src])
+        return send(out, f"{stem_of(file)}_gray.pdf", ws)
+
+    return await handle(work)
+
+
+@app.post("/api/flatten-pdf")
+async def flatten_pdf(file: UploadFile = File(...)):
+    async def work(ws: Workspace):
+        src = await save_pdf(file, ws)
+        out = ws.file(".pdf")
+        await run_job(jobs.flatten, src, str(out))
+        return send(out, f"{stem_of(file)}_flat.pdf", ws)
 
     return await handle(work)
 
@@ -139,19 +157,9 @@ async def office_to_pdf(file: UploadFile = File(...)):
 @app.post("/api/pdf-to-word")
 async def pdf_to_word(file: UploadFile = File(...)):
     async def work(ws: Workspace):
-        from pdf2docx import Converter
-
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws)
         out = ws.file(".docx")
-
-        def _convert():
-            cv = Converter(str(src))
-            try:
-                cv.convert(str(out))
-            finally:
-                cv.close()
-
-        await asyncio.to_thread(_convert)
+        await run_job(jobs.pdf_to_word, src, str(out))
         return send(out, f"{stem_of(file)}.docx", ws)
 
     return await handle(work)
@@ -160,34 +168,9 @@ async def pdf_to_word(file: UploadFile = File(...)):
 @app.post("/api/pdf-to-excel")
 async def pdf_to_excel(file: UploadFile = File(...)):
     async def work(ws: Workspace):
-        import pdfplumber
-        from openpyxl import Workbook
-
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws)
         out = ws.file(".xlsx")
-
-        def _convert():
-            wb = Workbook()
-            wb.remove(wb.active)
-            with pdfplumber.open(src) as pdf:
-                for pno, page in enumerate(pdf.pages, start=1):
-                    tables = page.extract_tables()
-                    if tables:
-                        for tno, table in enumerate(tables, start=1):
-                            ws_ = wb.create_sheet(f"P{pno}-T{tno}"[:31])
-                            for row in table:
-                                ws_.append([c if c is not None else "" for c in row])
-                    else:
-                        text = page.extract_text() or ""
-                        if text.strip():
-                            ws_ = wb.create_sheet(f"P{pno}-text"[:31])
-                            for line in text.splitlines():
-                                ws_.append(line.split())
-            if not wb.sheetnames:
-                wb.create_sheet("Empty")
-            wb.save(out)
-
-        await asyncio.to_thread(_convert)
+        await run_job(jobs.pdf_to_excel, src, str(out))
         return send(out, f"{stem_of(file)}.xlsx", ws)
 
     return await handle(work)
@@ -196,62 +179,12 @@ async def pdf_to_excel(file: UploadFile = File(...)):
 @app.post("/api/pdf-to-powerpoint")
 async def pdf_to_powerpoint(file: UploadFile = File(...)):
     async def work(ws: Workspace):
-        from pptx import Presentation
-        from pptx.util import Emu
-
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws)
         out = ws.file(".pptx")
-
-        def _convert():
-            prs = Presentation()
-            with pymupdf.open(src) as doc:
-                if doc.page_count == 0:
-                    raise ApiError(400, "no_pages", "PDF has no pages")
-                first = doc[0].rect
-                # 1pt = 12700 EMU
-                prs.slide_width, prs.slide_height = Emu(int(first.width * 12700)), Emu(int(first.height * 12700))
-                blank = prs.slide_layouts[6]
-                for page in doc:
-                    img = ws.file(".png")
-                    page.get_pixmap(dpi=150).save(img)
-                    slide = prs.slides.add_slide(blank)
-                    slide.shapes.add_picture(str(img), 0, 0, prs.slide_width, prs.slide_height)
-            prs.save(out)
-
-        await asyncio.to_thread(_convert)
+        await run_job(jobs.pdf_to_powerpoint, src, str(out), str(ws.path))
         return send(out, f"{stem_of(file)}.pptx", ws)
 
     return await handle(work)
-
-
-def _safe_fetcher():
-    """WeasyPrint fetcher limited to data: and public http(s) URLs, re-checking every redirect hop."""
-    from urllib import request
-
-    from weasyprint.urls import URLFetcher
-
-    class _CheckedRedirects(request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            try:
-                assert_public_url(newurl)
-            except HTTPException as e:
-                raise ValueError(e.detail)
-            return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-    class SafeFetcher(URLFetcher):
-        def __init__(self):
-            super().__init__(timeout=15, allowed_protocols={"http", "https", "data"}, allow_redirects=False)
-            self.add_handler(_CheckedRedirects())
-
-        def fetch(self, url, headers=None):
-            if not url.startswith("data:"):
-                try:
-                    assert_public_url(url)
-                except HTTPException as e:
-                    raise ValueError(e.detail)
-            return super().fetch(url, headers)
-
-    return SafeFetcher()
 
 
 @app.post("/api/html-to-pdf")
@@ -260,17 +193,14 @@ async def html_to_pdf(file: UploadFile | None = File(None), url: str | None = Fo
         raise ApiError(400, "missing_input", "Provide an HTML file or a URL")
 
     async def work(ws: Workspace):
-        from weasyprint import HTML
-
         out = ws.file(".pdf")
         if url:
             assert_public_url(url)
-            await asyncio.to_thread(lambda: HTML(url=url, url_fetcher=_safe_fetcher()).write_pdf(out))
+            await run_job(jobs.html_to_pdf, str(out), url, None, timeout=120)
             name = "webpage.pdf"
         else:
             src = await save_upload(file, ws, {".html", ".htm"})
-            html = src.read_text(errors="replace")
-            await asyncio.to_thread(lambda: HTML(string=html, url_fetcher=_safe_fetcher()).write_pdf(out))
+            await run_job(jobs.html_to_pdf, str(out), None, str(src), timeout=120)
             name = f"{stem_of(file)}.pdf"
         return send(out, name, ws)
 
@@ -281,15 +211,13 @@ async def html_to_pdf(file: UploadFile | None = File(None), url: str | None = Fo
 
 @app.post("/api/ocr-pdf")
 async def ocr_pdf(file: UploadFile = File(...), lang: str = Form("eng")):
-    langs = [l for l in lang.split("+") if l]
-    if not langs or any(l not in OCR_LANGS for l in langs):
-        raise ApiError(400, "invalid_option", "Invalid language")
+    langs = parse_langs(lang)
 
     async def work(ws: Workspace):
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws, MAX_OCR_PAGES)
         out = ws.file(".pdf")
-        await run(["ocrmypdf", "--skip-text", "--rotate-pages", "--deskew", "-l", "+".join(langs),
-                   "--output-type", "pdf", str(src), str(out)], timeout=600)
+        await run(["ocrmypdf", "--skip-text", "--rotate-pages", "--deskew", "-l", langs,
+                   "--output-type", "pdf", src, str(out)], timeout=600)
         return send(out, f"{stem_of(file)}_ocr.pdf", ws)
 
     return await handle(work)
@@ -298,12 +226,25 @@ async def ocr_pdf(file: UploadFile = File(...), lang: str = Form("eng")):
 @app.post("/api/pdf-to-pdfa")
 async def pdf_to_pdfa(file: UploadFile = File(...)):
     async def work(ws: Workspace):
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws)
         out = ws.file(".pdf")
         # --tesseract-timeout 0 disables OCR while still producing a PDF/A
         await run(["ocrmypdf", "--skip-text", "--tesseract-timeout", "0", "--output-type", "pdfa-2",
-                   str(src), str(out)], timeout=300)
+                   src, str(out)], timeout=300)
         return send(out, f"{stem_of(file)}_pdfa.pdf", ws)
+
+    return await handle(work)
+
+
+@app.post("/api/image-to-text")
+async def image_to_text(file: UploadFile = File(...), lang: str = Form("eng")):
+    langs = parse_langs(lang)
+
+    async def work(ws: Workspace):
+        src = await save_upload(file, ws, IMAGES)
+        base = ws.path / "ocr"
+        await run(["tesseract", str(src), str(base), "-l", langs], timeout=180)
+        return send(base.with_suffix(".txt"), f"{stem_of(file)}.txt", ws)
 
     return await handle(work)
 
@@ -316,14 +257,9 @@ async def protect_pdf(file: UploadFile = File(...), password: str = Form(...)):
         raise ApiError(400, "password_required", "Password required")
 
     async def work(ws: Workspace):
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws)
         out = ws.file(".pdf")
-
-        def _protect():
-            with pikepdf.open(src) as pdf:
-                pdf.save(out, encryption=pikepdf.Encryption(owner=password, user=password, R=6))
-
-        await asyncio.to_thread(_protect)
+        await run_job(jobs.protect, src, str(out), password)
         return send(out, f"{stem_of(file)}_protected.pdf", ws)
 
     return await handle(work)
@@ -332,124 +268,14 @@ async def protect_pdf(file: UploadFile = File(...), password: str = Form(...)):
 @app.post("/api/unlock-pdf")
 async def unlock_pdf(file: UploadFile = File(...), password: str = Form("")):
     async def work(ws: Workspace):
+        # encrypted by definition: skip save_pdf's encryption check
         src = await save_upload(file, ws, PDF)
         out = ws.file(".pdf")
-
-        def _unlock():
-            try:
-                with pikepdf.open(src, password=password) as pdf:
-                    pdf.save(out)
-            except pikepdf.PasswordError:
-                raise ApiError(400, "wrong_password", "Wrong password")
-
-        await asyncio.to_thread(_unlock)
+        await run_job(jobs.unlock, str(src), str(out), password)
         return send(out, f"{stem_of(file)}_unlocked.pdf", ws)
 
     return await handle(work)
 
-
-# ---------- Compare ----------
-
-def _words(doc: pymupdf.Document) -> list[tuple[int, pymupdf.Rect, str]]:
-    return [(pno, pymupdf.Rect(w[:4]), w[4]) for pno, page in enumerate(doc) for w in page.get_text("words")]
-
-
-@app.post("/api/compare-pdf")
-async def compare_pdf(file_a: UploadFile = File(...), file_b: UploadFile = File(...)):
-    async def work(ws: Workspace):
-        src_a = await save_upload(file_a, ws, PDF)
-        src_b = await save_upload(file_b, ws, PDF)
-        out = ws.file(".pdf")
-
-        def _compare():
-            with pymupdf.open(src_a) as a, pymupdf.open(src_b) as b, pymupdf.open() as result:
-                wa, wb = _words(a), _words(b)
-                removed: dict[int, list[pymupdf.Rect]] = {}
-                added: dict[int, list[pymupdf.Rect]] = {}
-                sm = difflib.SequenceMatcher(None, [w[2] for w in wa], [w[2] for w in wb], autojunk=False)
-                for tag, i1, i2, j1, j2 in sm.get_opcodes():
-                    if tag in ("delete", "replace"):
-                        for pno, rect, _ in wa[i1:i2]:
-                            removed.setdefault(pno, []).append(rect)
-                    if tag in ("insert", "replace"):
-                        for pno, rect, _ in wb[j1:j2]:
-                            added.setdefault(pno, []).append(rect)
-
-                gap, header = 24, 28
-                for i in range(max(a.page_count, b.page_count)):
-                    ra = a[i].rect if i < a.page_count else pymupdf.Rect(0, 0, 0, 0)
-                    rb = b[i].rect if i < b.page_count else pymupdf.Rect(0, 0, 0, 0)
-                    width = ra.width + rb.width + gap
-                    height = max(ra.height, rb.height) + header
-                    page = result.new_page(width=width, height=height)
-                    page.insert_text((8, 18), f"A: {file_a.filename}  (page {i + 1})", fontsize=10, color=(0.7, 0, 0))
-                    page.insert_text((ra.width + gap + 8, 18), f"B: {file_b.filename}  (page {i + 1})",
-                                     fontsize=10, color=(0, 0.5, 0))
-                    if i < a.page_count:
-                        page.show_pdf_page(pymupdf.Rect(0, header, ra.width, header + ra.height), a, i)
-                        for r in removed.get(i, []):
-                            page.draw_rect(r + (0, header, 0, header), color=None, fill=(1, 0, 0), fill_opacity=0.3)
-                    if i < b.page_count:
-                        ox = ra.width + gap
-                        page.show_pdf_page(pymupdf.Rect(ox, header, ox + rb.width, header + rb.height), b, i)
-                        for r in added.get(i, []):
-                            page.draw_rect(r + (ox, header, ox, header), color=None, fill=(0, 0.8, 0), fill_opacity=0.3)
-                    page.draw_line((ra.width + gap / 2, 0), (ra.width + gap / 2, height), color=(0.6, 0.6, 0.6))
-                result.save(out)
-
-        await asyncio.to_thread(_compare)
-        return send(out, "comparison.pdf", ws)
-
-    return await handle(work)
-
-
-# ---------- Images ----------
-
-UPSCALE_MAX_INPUT_PIXELS = {2: 2_500_000, 4: 800_000}
-
-
-@app.post("/api/upscale-image")
-async def upscale_image(file: UploadFile = File(...), scale: int = Form(2)):
-    if scale not in UPSCALE_MAX_INPUT_PIXELS:
-        raise ApiError(400, "invalid_option", "Scale must be 2 or 4")
-
-    async def work(ws: Workspace):
-        from PIL import Image, ImageFilter
-
-        src = await save_upload(file, ws, IMAGES)
-        out = ws.file(".png")
-
-        def _upscale():
-            with Image.open(src) as im:
-                if im.width * im.height > UPSCALE_MAX_INPUT_PIXELS[scale]:
-                    raise ApiError(400, "image_too_large", "Image too large", scale=scale)
-                im = im.convert("RGBA") if im.mode in ("RGBA", "LA", "P") else im.convert("RGB")
-                model = Path(os.getenv("MODELS_DIR", "/models")) / f"FSRCNN_x{scale}.pb"
-                try:
-                    import cv2
-                    import numpy as np
-
-                    if not model.exists():
-                        raise FileNotFoundError(model)
-                    sr = cv2.dnn_superres.DnnSuperResImpl_create()
-                    sr.readModel(str(model))
-                    sr.setModel("fsrcnn", scale)
-                    rgb = np.array(im.convert("RGB"))[:, :, ::-1]
-                    up = Image.fromarray(sr.upsample(rgb)[:, :, ::-1])
-                    if im.mode == "RGBA":
-                        up.putalpha(im.getchannel("A").resize(up.size, Image.LANCZOS))
-                except (ImportError, AttributeError, FileNotFoundError):
-                    up = im.resize((im.width * scale, im.height * scale), Image.LANCZOS)
-                    up = up.filter(ImageFilter.UnsharpMask(radius=2, percent=80, threshold=2))
-                up.save(out, optimize=True)
-
-        await asyncio.to_thread(_upscale)
-        return send(out, f"{stem_of(file)}_x{scale}.png", ws)
-
-    return await handle(work)
-
-
-# ---------- Redaction / cleanup ----------
 
 @app.post("/api/redact-pdf")
 async def redact_pdf(
@@ -467,9 +293,9 @@ async def redact_pdf(
     presets = [p for p, on in flags.items() if on and p in PRESETS]
 
     async def work(ws: Workspace):
-        src = await save_upload(file, ws, PDF)
+        src = await save_pdf(file, ws)
         out = ws.file(".pdf")
-        count = await asyncio.to_thread(redact, str(src), str(out), boxes, term_list, presets)
+        count = await run_job(jobs.redact, src, str(out), boxes, term_list, presets)
         resp = send(out, f"{stem_of(file)}_redacted.pdf", ws)
         resp.headers["X-Redaction-Count"] = str(count)
         return resp
@@ -477,52 +303,31 @@ async def redact_pdf(
     return await handle(work)
 
 
-@app.post("/api/flatten-pdf")
-async def flatten_pdf(file: UploadFile = File(...)):
+# ---------- Compare ----------
+
+@app.post("/api/compare-pdf")
+async def compare_pdf(file_a: UploadFile = File(...), file_b: UploadFile = File(...)):
     async def work(ws: Workspace):
-        src = await save_upload(file, ws, PDF)
+        src_a = await save_pdf(file_a, ws)
+        src_b = await save_pdf(file_b, ws)
         out = ws.file(".pdf")
-
-        def _flatten():
-            with pikepdf.open(src) as pdf:
-                # form fields need appearance streams before they can be burnt into the page
-                pdf.generate_appearance_streams()
-                pdf.flatten_annotations("all")
-                if "/AcroForm" in pdf.Root:
-                    del pdf.Root.AcroForm
-                pdf.save(out)
-
-        await asyncio.to_thread(_flatten)
-        return send(out, f"{stem_of(file)}_flat.pdf", ws)
+        await run_job(jobs.compare, src_a, src_b, str(out), file_a.filename or "A", file_b.filename or "B")
+        return send(out, "comparison.pdf", ws)
 
     return await handle(work)
 
 
-@app.post("/api/grayscale-pdf")
-async def grayscale_pdf(file: UploadFile = File(...)):
-    async def work(ws: Workspace):
-        src = await save_upload(file, ws, PDF)
-        out = ws.file(".pdf")
-        await run([
-            "gs", "-sDEVICE=pdfwrite", "-sColorConversionStrategy=Gray", "-dProcessColorModel=/DeviceGray",
-            "-dOverrideICC", "-dNOPAUSE", "-dQUIET", "-dBATCH", "-dSAFER", f"-sOutputFile={out}", str(src),
-        ])
-        return send(out, f"{stem_of(file)}_gray.pdf", ws)
+# ---------- Images ----------
 
-    return await handle(work)
-
-
-@app.post("/api/image-to-text")
-async def image_to_text(file: UploadFile = File(...), lang: str = Form("eng")):
-    langs = [l for l in lang.split("+") if l]
-    if not langs or any(l not in OCR_LANGS for l in langs):
-        raise ApiError(400, "invalid_option", "Invalid language")
+@app.post("/api/upscale-image")
+async def upscale_image(file: UploadFile = File(...), scale: int = Form(2)):
+    if scale not in jobs.UPSCALE_MAX_INPUT_PIXELS:
+        raise ApiError(400, "invalid_option", "Scale must be 2 or 4")
 
     async def work(ws: Workspace):
         src = await save_upload(file, ws, IMAGES)
-        base = ws.file("")
-        await run(["tesseract", str(src), str(base), "-l", "+".join(langs)], timeout=180)
-        return send(base.with_suffix(".txt"), f"{stem_of(file)}.txt", ws)
+        out = ws.file(".png")
+        await run_job(jobs.upscale, str(src), str(out), scale)
+        return send(out, f"{stem_of(file)}_x{scale}.png", ws)
 
     return await handle(work)
-
