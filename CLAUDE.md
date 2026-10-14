@@ -1,0 +1,65 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+iHatePDFs — free PDF & image tools site (iLovePDF-style), FR/EN. Live at https://ihatepdfs.oryx3.fr, served from this machine.
+
+## Commands
+
+```bash
+# Full stack (prod-like): web on 127.0.0.1:3000, api internal only
+docker compose up -d --build
+docker compose up -d --build web        # rebuild one service
+docker compose logs -f api
+
+# Frontend dev (needs the API on :8000)
+docker build -t ilp-api api && docker run -d --rm -p 8000:8000 ilp-api
+cd web && npm run dev                   # predev copies pdf.js worker into public/
+cd web && npx tsc --noEmit && npx eslint .
+cd web && npm run build
+
+# Deploy a change to production (AGPL: push first, see below)
+git push && ./deploy/update.sh          # git pull + compose rebuild + prune
+```
+
+There is no automated test suite. Changes have been verified by curling each `/api/*` endpoint with real files and by driving the UI with Playwright (run from the `mcr.microsoft.com/playwright` Docker image — the host lacks Chromium system libs). Hitting the public URL from this machine counts against the per-IP rate limit; `docker compose restart api` resets the in-memory counters.
+
+## Architecture
+
+Two services behind Apache (`deploy/apache-ihatepdfs*.conf`, TLS via certbot):
+
+- `web/` — Next.js 15 App Router, all pages statically generated under `/[locale]/...`. `src/middleware.ts` redirects locale-less paths. `/api/*` is proxied to the FastAPI service by a rewrite in `next.config.ts`; **`API_URL` is baked in at build time** (Docker build arg `http://api:8000`), so the browser is always same-origin.
+- `api/` — FastAPI, single uvicorn worker (rate-limit and queue state are in-process). Heavy lifting via CLI tools/libs: Ghostscript, LibreOffice (`soffice`), ocrmypdf/Tesseract, pikepdf, PyMuPDF, pdf2docx, WeasyPrint, OpenCV `dnn_superres` (FSRCNN models in `/models`).
+
+### Tool registry drives everything
+
+`web/src/lib/tools.ts` (`TOOLS`) declares every tool: category, icon name, `accept`, `mode: "client" | "server"`, `endpoint`, `options` and optional `editor`. From it:
+- the home grid, routes (`generateStaticParams`) and the options form (`OptionsForm`, generated from `OptionDef`s, with `showIf`) are built automatically;
+- `ToolRunner` runs `runTool()` (`lib/processors/index.ts`), which either calls a lazily-imported client processor (`processors/pdf.ts`, `processors/image.ts`) or POSTs to `/api/<endpoint>` — one request per file, except `serverInput: "pair"` (`file_a`/`file_b`, compare). Options are sent as form fields with the same keys.
+- Icons must be added to the explicit map in `components/ToolIcon.tsx`.
+
+Adding a tool = registry entry + `tools.<id>` (and any new option/value labels) in **both** `i18n/fr.ts` and `i18n/en.ts` (`en` is typed as `Dict = typeof fr`, so missing keys fail typecheck) + a processor or an endpoint.
+
+### Visual editors
+
+`organize`, `sign`, `edit`, `crop` (in `components/editors/`) emit `EditorData` (`lib/editorTypes.ts`) via `onChange`; processors receive it as `ctx.editorData`. Sign/edit boxes are stored as **fractions of the page as displayed** (rotation applied, top-left origin). `placeBox()` in `processors/pdf.ts` converts them to pdf-lib coordinates for pages rotated 0/90/180/270 and uses the CropBox — reuse it for anything drawn onto pages. Edit-PDF text baseline is placed at 0.95em below each line top to match the editor's CSS `line-height: 1.2`; change both together. Standard PDF fonts are WinAnsi only: `safeText()` drops unencodable characters instead of throwing.
+
+pdf.js (`lib/pdfjs.ts`) transfers/detaches the buffer it is given — always pass a fresh copy (`openPdf` does). Its worker is served from `public/pdf.worker.min.mjs` (copied by `scripts/copy-pdf-worker.mjs`, gitignored).
+
+### API conventions (`api/app/`)
+
+Every endpoint wraps its work in `handle(work)`: creates a per-request `Workspace` temp dir, enforces the global `HEAVY` semaphore and `MAX_QUEUE` (503), and cleans up on error; `send()` removes the dir after the response is streamed. Uploads go through `save_upload()` (extension allow-list, size cap). Shell tools run via `run()` (thread + timeout, stderr tail in the error). Errors are `HTTPException` with a string `detail`, which the UI displays verbatim — except 429/503, which the frontend maps to localized messages (`HTTP_429`/`HTTP_503` sentinel in `processors/index.ts`).
+
+`ratelimit.py`: per-IP sliding window + per-IP concurrency. The client IP comes from `X-Client-IP`, which Apache **sets (overwrites)** — don't switch to `X-Forwarded-For`. Rejections drain the request body first; replying mid-upload makes the Next proxy return a 500.
+
+HTML→PDF uses a WeasyPrint ≥70 `URLFetcher` subclass that only allows `data:` and public http(s) hosts and re-checks every redirect hop (SSRF guard, also blocks `file://` from uploaded HTML).
+
+### Docker gotchas
+
+- API base image must stay on Debian trixie: ocrmypdf refuses Ghostscript 10.0.0–10.02.0 (bookworm) for `--skip-text`/PDF/A.
+- pdf2docx pulls `opencv-python-headless`; the Dockerfile swaps it for `opencv-contrib-python-headless` (needed for `dnn_superres`). Keep it `<5`.
+- Source files on this host are created with a restrictive umask: `COPY --chmod=755` (api) and `--chown=node:node` (web) are required, or the non-root containers can't read them.
+
+## Licensing / deployment constraint
+
+The project is AGPL-3.0 (forced by `@imgly/background-removal`, PyMuPDF, Ghostscript). The repo https://github.com/Sneakyquaza/ihatepdfs is public and linked from the site footer — any change deployed to production must also be pushed there.
