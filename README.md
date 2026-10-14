@@ -26,11 +26,14 @@ cd web && npm install && npm run dev
 | Où | Outils |
 |---|---|
 | Navigateur | fusionner, diviser, supprimer/extraire pages, organiser (glisser-déposer), plusieurs pages par feuille, recadrer, métadonnées, PDF→texte, pivoter, numéroter, filigrane, éditer (texte/formes/surlignage/masquage), signer (dessin/texte/import), PDF→image, image→PDF, **suppression d'arrière-plan IA**, redimensionner, recadrer, compresser, convertir, pivoter/miroir, filigrane image, flouter/pixeliser des zones |
-| Serveur | **caviarder** (suppression réelle du contenu + recherche de mots/e-mails/téléphones/IBAN/cartes), aplatir, niveaux de gris, compresser, réparer, OCR (PDF et image), PDF/A, Word/PowerPoint/Excel→PDF, HTML/URL→PDF, PDF→Word/Excel/PowerPoint, protéger, déverrouiller, comparer, agrandissement IA x2/x4 |
+| Serveur | **caviarder** (suppression réelle du contenu + recherche de mots/e-mails/téléphones/IBAN/cartes), aplatir, niveaux de gris, compresser, réparer, OCR (PDF et image), PDF/A, Word/PowerPoint/Excel→PDF, HTML/URL→PDF (Chromium isolé), PDF→Word, PDF→Excel (nombres typés, tableaux multi-pages, OCR auto), PDF→PowerPoint (texte modifiable), protéger, déverrouiller, comparer, agrandissement IA x2/x4 |
 
 ## Tests
 
-`./e2e/run.sh [url] [outils]` — tests de bout en bout Playwright (via Docker) sur tous les outils.
+```bash
+./e2e/run.sh [url] [outils]   # bout en bout : Playwright (via Docker) pilote chaque outil dans un vrai navigateur
+docker compose build api && docker compose run --rm -v ./api/tests:/srv/tests api python -m unittest discover -s tests
+```
 
 ## Ajouter un outil
 
