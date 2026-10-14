@@ -26,6 +26,7 @@ const cases = [
   ["word-to-pdf", ["doc.txt"]],
   ["pdf-to-word", ["a.pdf"]],
   ["pdf-to-powerpoint", ["a.pdf"]],
+  ["pdf-to-excel", ["a.pdf"]],
   ["protect-pdf", ["a.pdf"], async (p) => p.fill("#opt-password", "x")],
   ["compare-pdf", ["a.pdf", "b.pdf"]],
   ["upscale-image", ["photo.png"]],
@@ -176,11 +177,27 @@ const cases = [
     await dl1;
     await pc.getByRole("button", { name: /Compresser PDF/ }).click();
     await pc.waitForURL(/compress-pdf/);
-    const handed = await pc.getByText("merged.pdf").isVisible();
+    const handed = await pc.getByText("merged.pdf").waitFor({ timeout: 10000 }).then(() => true, () => false);
     const dl2 = pc.waitForEvent("download", { timeout: 60000 }).then(() => true, () => false);
     await pc.locator("aside button").last().click();
     check(handed && (await dl2), "chain merge>comp", `handed=${handed}`);
     await pc.close();
+
+    // chaining into a tool that needs a full page load (files go through IndexedDB)
+    const pr = await ctx.newPage();
+    await pr.goto(`${BASE}/crop-image`);
+    await pr.setInputFiles('input[type="file"]', F("photo.png"));
+    await pr.waitForSelector("img");
+    const dl3 = pr.waitForEvent("download");
+    await pr.locator("aside button").last().click();
+    await dl3;
+    await pr.getByRole("button", { name: /Supprimer l'arrière-plan/ }).click();
+    await pr.waitForURL(/remove-bg/);
+    const handedBg = await pr.getByText("photo_cropped.png").waitFor({ timeout: 10000 }).then(() => true, () => false);
+    const dl4 = pr.waitForEvent("download", { timeout: 120000 }).then(() => true, () => false);
+    if (handedBg) await pr.locator("aside button").last().click();
+    check(handedBg && (await dl4), "chain crop>bg", `handed=${handedBg} (full page load)`);
+    await pr.close();
 
     // theme toggle persists across reloads
     const pt = await ctx.newPage();

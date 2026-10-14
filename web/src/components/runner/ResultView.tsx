@@ -12,18 +12,17 @@ import { ToolIcon } from "../ToolIcon";
 
 // Most useful follow-ups per output kind, in display order.
 const NEXT_PDF = ["compress-pdf", "sign-pdf", "protect-pdf", "redact-pdf", "merge-pdf", "page-numbers", "watermark-pdf", "organize-pdf", "split-pdf", "rotate-pdf", "pdf-to-jpg", "ocr-pdf"];
+const NEXT_IMAGE_FIRST = ["remove-bg"];
 const NEXT_IMAGE = ["compress-image", "resize-image", "crop-image", "convert-image", "upscale-image", "blur-image", "watermark-image", "jpg-to-pdf"];
-// Tools that need a full page load (see HARD_NAV in ToolGrid) can't receive files in memory.
-const NO_HANDOFF = new Set(["remove-bg"]);
 
 function nextTools(current: Tool, outputs: File[]): Tool[] {
   if (!outputs.length) return [];
   const isPdf = outputs.every((f) => f.type === "application/pdf" || extOf(f.name) === "pdf");
   const isImage = outputs.every((f) => f.type.startsWith("image/"));
-  const ids = isPdf ? NEXT_PDF : isImage ? NEXT_IMAGE : [];
+  const ids = isPdf ? NEXT_PDF : isImage ? NEXT_IMAGE_FIRST.concat(NEXT_IMAGE) : [];
   return ids
     .map((id) => TOOL_MAP[id])
-    .filter((t) => t.id !== current.id && !NO_HANDOFF.has(t.id))
+    .filter((t) => t.id !== current.id)
     .filter((t) => outputs.length === 1 || t.multiple)
     .slice(0, 6);
 }
@@ -86,9 +85,13 @@ export function ResultView({ tool, outputs, t, locale, onReset }: { tool: Tool; 
             {suggestions.map((next) => (
               <button
                 key={next.id}
-                onClick={() => {
-                  handOff(files);
-                  router.push(`/${locale}/${next.id}`);
+                onClick={async () => {
+                  await handOff(files);
+                  const href = `/${locale}/${next.id}`;
+                  // intentional full load: that page needs its own CSP (Tool.fullPageLoad)
+                  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+                  if (next.fullPageLoad) window.location.assign(href);
+                  else router.push(href);
                 }}
                 className="group flex items-center gap-3 rounded-xl border border-line p-3 text-left font-semibold transition hover:border-brand"
               >

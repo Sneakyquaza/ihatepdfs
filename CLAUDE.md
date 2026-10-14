@@ -24,7 +24,7 @@ git push && ./deploy/update.sh          # git pull + compose rebuild + prune
 
 ## Tests
 
-API unit tests (stdlib `unittest`, currently the redaction detection rules in `api/tests/`). The image only ships `app/`, so mount the tests:
+API tests (stdlib `unittest` in `api/tests/`: redaction detection, PPTX text geometry, PDF→Excel typing/heuristics plus end-to-end conversions of generated PDFs, including the OCR path). The image only ships `app/`, so mount the tests:
 
 ```bash
 docker compose build api && docker compose run --rm -v ./api/tests:/srv/tests api python -m unittest discover -s tests
@@ -57,7 +57,7 @@ Three services behind Apache (vhosts in `/etc/apache2/sites-available/ihatepdfs*
 
 Adding a tool = registry entry + `tools.<id>` (and any new option/value labels) in **both** `i18n/fr.ts` and `i18n/en.ts` (`en` is typed as `Dict = typeof fr`, so missing keys fail typecheck) + a processor or an endpoint.
 
-Progress is structured (`Progress` in `processors/index.ts`: phase upload/server/model/work, optional fraction, batch step); server calls use XHR for upload progress. "Continue with…" on the result screen hands the output files to the next tool through module memory (`lib/handoff.ts`, client-side navigation only — tools in `HARD_NAV`/`NO_HANDOFF` are excluded).
+Progress is structured (`Progress` in `processors/index.ts`: phase upload/server/model/work, optional fraction, batch step); server calls use XHR for upload progress. "Continue with…" on the result screen hands the output files to the next tool through IndexedDB (`lib/handoff.ts`: consumed on arrival, 10 min TTL, memory fallback), so it also works across the full page load of `fullPageLoad` tools. `takeHandOff()` shares one in-flight read so StrictMode's double effect can't lose the files.
 
 Theme: colors are tokens (`bg-surface`, `bg-canvas`, `text-ink`, `text-muted`, `border-line`) defined in `globals.css` for light and `[data-theme="dark"]`; don't use `bg-white`/`black/x` in UI chrome (PDF "paper", the signature pad and the white-out tool stay white on purpose). `dark:` targets `[data-theme=dark]`, set before paint by `THEME_SCRIPT`.
 
@@ -83,11 +83,13 @@ Every endpoint wraps its work in `handle(work)`: creates a per-request `Workspac
 
 Redaction (`redact.py`) must stay server-side: PyMuPDF `apply_redactions` removes the text/pixels under each area, then `doc.scrub()` + `garbage=4` drop metadata, hidden text and orphaned objects. Areas arrive as display fractions and are mapped with `page.derotation_matrix`; text/regex matches are found on the page's words joined by spaces (a match redacts every word it touches). Returns 400 when nothing matched.
 
-PDF→PowerPoint (`jobs.pdf_to_powerpoint`) produces editable slides: horizontal text spans are redacted out of the page (images/vector art kept), the page is rendered as the slide background, and each text line is re-created as a text box (font/size/color/bold/italic). Rotated pages and non-horizontal text stay in the picture.
+PDF→PowerPoint (`pptx_convert.py`) produces editable slides: all text is redacted out of the page (images/vector art kept), the page is rendered as the slide background, and each text line is re-created as a text box (font/size/color/bold/italic) at its angle. PyMuPDF gives text bboxes/directions in *unrotated* page space; `line_frame()` maps them through `page.rotation_matrix` to a centred frame + clockwise angle. PowerPoint has one slide size (the first page's), other pages are letterboxed with a uniform scale.
+
+PDF→Excel (`tables.py`): per page, ruled tables first, else text-aligned detection filtered by `plausible()` (so paragraphs don't become tables); unit-only columns ("€", "%") are glued back; tables continued on the next page with the same columns are merged (repeated header dropped); cells are typed by `type_cell()` with the table's decimal separator from `detect_decimal()` (identifiers with leading zeros and >15-digit runs stay text). PDFs with no text layer are OCR'd first.
 
 ### Security headers
 
-Set in `web/next.config.ts` (not Apache): CSP, HSTS, etc. The in-browser AI needs `'wasm-unsafe-eval'` and `blob:` scripts everywhere, and `/:locale/remove-bg` alone also gets `'unsafe-eval'` (protobufjs codegen). Because client-side navigation keeps the previous page's CSP, links to such pages must be plain `<a>` (see `HARD_NAV` in `ToolGrid.tsx`). Run the e2e suite after touching the CSP — failures only show up in the browser.
+Set in `web/next.config.ts` (not Apache): CSP, HSTS, etc. The in-browser AI needs `'wasm-unsafe-eval'` and `blob:` scripts everywhere, and `/:locale/remove-bg` alone also gets `'unsafe-eval'` (protobufjs codegen). Because client-side navigation keeps the previous page's CSP, links to such pages must do a full page load: mark the tool `fullPageLoad: true` in `tools.ts` (the grid and the "continue with" buttons honour it). Run the e2e suite after touching the CSP — failures only show up in the browser.
 
 Legal notice / privacy texts live in `web/src/i18n/legal.ts`; keep the privacy page truthful when adding anything that contacts a third party or stores data.
 

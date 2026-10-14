@@ -170,7 +170,7 @@ async def pdf_to_excel(file: UploadFile = File(...)):
     async def work(ws: Workspace):
         src = await save_pdf(file, ws)
         out = ws.file(".xlsx")
-        await run_job(jobs.pdf_to_excel, src, str(out))
+        await run_job(jobs.pdf_to_excel, src, str(out), str(ws.path))
         return send(out, f"{stem_of(file)}.xlsx", ws)
 
     return await handle(work)

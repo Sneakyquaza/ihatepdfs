@@ -35,6 +35,11 @@ export interface Tool {
   serverInput?: "each" | "pair";
   options?: OptionDef[];
   editor?: Editor;
+  /**
+   * The page is served with its own, looser CSP (see next.config.ts). Client-side navigation keeps the
+   * previous page's CSP, so links to it must trigger a full page load.
+   */
+  fullPageLoad?: true;
 }
 
 const PDF = "application/pdf,.pdf";
@@ -181,7 +186,7 @@ export const TOOLS: Tool[] = [
 
   // ---------- Image ----------
   {
-    id: "remove-bg", category: "image", icon: "Eraser", color: C.teal, accept: IMG, multiple: true, mode: "client",
+    id: "remove-bg", category: "image", icon: "Eraser", color: C.teal, accept: IMG, multiple: true, mode: "client", fullPageLoad: true,
     options: [
       { type: "select", key: "background", options: ["transparent", "white", "custom"], default: "transparent" },
       { type: "color", key: "bgColor", default: "#ffffff", showIf: { key: "background", equals: "custom" } },

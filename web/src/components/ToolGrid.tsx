@@ -10,8 +10,6 @@ import { type Category, CATEGORIES, type Tool, TOOL_MAP, TOOLS } from "@/lib/too
 import { ToolIcon } from "./ToolIcon";
 
 const AI_TOOLS = new Set(["remove-bg", "upscale-image"]);
-// Pages served with a looser CSP (see next.config.ts) need a full page load: client-side navigation keeps the old policy.
-const HARD_NAV = new Set(["remove-bg"]);
 const linkClass = "mt-4 block font-bold after:absolute after:inset-0 after:rounded-2xl after:content-['']";
 
 function ToolCard({
@@ -29,7 +27,7 @@ function ToolCard({
         )}
       </div>
       {/* stretched link: the whole card is clickable, the star button stays a separate control */}
-      {HARD_NAV.has(tool.id) ? (
+      {tool.fullPageLoad ? (
         <a href={`/${locale}/${tool.id}`} className={linkClass}>{name}</a>
       ) : (
         <Link href={`/${locale}/${tool.id}`} className={linkClass}>{name}</Link>

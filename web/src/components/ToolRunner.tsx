@@ -8,7 +8,7 @@ import { fmt, getDict, type Locale } from "@/i18n";
 import type { EditorData } from "@/lib/editorTypes";
 import { AppError } from "@/lib/errors";
 import { downloadBlob, extOf, type Options, type OutputFile } from "@/lib/files";
-import { clearHandOff, peekHandOff } from "@/lib/handoff";
+import { takeHandOff } from "@/lib/handoff";
 import { pushRecent } from "@/lib/prefs";
 import { type Progress, runTool } from "@/lib/processors";
 import { CLIENT_WARN_MB, defaultOptions, SERVER_MAX_MB, type Tool, TOOL_MAP } from "@/lib/tools";
@@ -52,9 +52,7 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
   const t = getDict(locale);
   const minFiles = tool.minFiles ?? 1;
 
-  // files handed over by "continue with…" on the previous tool's result screen
-  const [files, setFiles] = useState<File[]>(() => limitFiles(tool, peekHandOff() ?? []));
-  useEffect(() => clearHandOff(), []);
+  const [files, setFiles] = useState<File[]>([]);
   const [opts, setOpts] = useState<Options>(() => defaultOptions(tool, t.defaults));
   const [editorData, setEditorData] = useState<EditorData>(null);
   const [status, setStatus] = useState<Status>("idle");
@@ -73,6 +71,15 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
     [tool],
   );
   const dragging = useWindowDrop(addFiles, status !== "done");
+
+  // files handed over by "continue with…" on the previous tool's result screen
+  useEffect(() => {
+    let alive = true;
+    takeHandOff().then((handed) => alive && handed && addFiles(handed));
+    return () => {
+      alive = false;
+    };
+  }, [addFiles]);
 
   const move = (i: number, d: -1 | 1) =>
     setFiles((prev) => {

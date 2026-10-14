@@ -52,114 +52,16 @@ def pdf_to_word(src: str, out: str) -> None:
         cv.close()
 
 
-def pdf_to_excel(src: str, out: str) -> None:
-    import pdfplumber
-    from openpyxl import Workbook
+def pdf_to_excel(src: str, out: str, tmp_dir: str) -> None:
+    from .tables import convert
 
-    wb = Workbook()
-    wb.remove(wb.active)
-    with pdfplumber.open(src) as pdf:
-        for pno, page in enumerate(pdf.pages, start=1):
-            tables = page.extract_tables()
-            if tables:
-                for tno, table in enumerate(tables, start=1):
-                    sheet = wb.create_sheet(f"P{pno}-T{tno}"[:31])
-                    for row in table:
-                        sheet.append([c if c is not None else "" for c in row])
-            else:
-                text = page.extract_text() or ""
-                if text.strip():
-                    sheet = wb.create_sheet(f"P{pno}-text"[:31])
-                    for line in text.splitlines():
-                        sheet.append(line.split())
-    if not wb.sheetnames:
-        wb.create_sheet("Empty")
-    wb.save(out)
-
-
-_FONT_ALIASES = {"helvetica": "Arial", "arialmt": "Arial", "times": "Times New Roman", "timesnewromanpsmt": "Times New Roman",
-                 "courier": "Courier New", "couriernewpsmt": "Courier New", "symbol": "Symbol"}
-
-
-def _pptx_font(name: str) -> str:
-    """'ABCDEF+Calibri-Bold' -> 'Calibri'; PDF base-14 names -> common Office fonts."""
-    name = name.split("+", 1)[-1]
-    family = name.split("-", 1)[0].split(",", 1)[0]
-    alias = _FONT_ALIASES.get(family.lower())
-    if alias:
-        return alias
-    for suffix in ("MT", "PSMT", "PS"):
-        if family.endswith(suffix) and len(family) > len(suffix):
-            family = family[: -len(suffix)]
-    return family or "Arial"
-
-
-def _xml_safe(text: str) -> str:
-    return "".join(ch for ch in text if ch in "\t" or ord(ch) >= 0x20)
+    convert(src, out, tmp_dir)
 
 
 def pdf_to_powerpoint(src: str, out: str, tmp_dir: str) -> None:
-    """Editable slides: page artwork as a background picture, horizontal text re-created as real text boxes."""
-    from pptx import Presentation
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import MSO_AUTO_SIZE
-    from pptx.util import Emu, Pt
+    from .pptx_convert import convert
 
-    emu = 12700  # EMU per point
-    prs = Presentation()
-    with pymupdf.open(src) as doc:
-        first = doc[0].rect
-        prs.slide_width, prs.slide_height = Emu(int(first.width * emu)), Emu(int(first.height * emu))
-        blank = prs.slide_layouts[6]
-        for i, page in enumerate(doc):
-            sx, sy = first.width / page.rect.width, first.height / page.rect.height
-            lines = []
-            # rotated pages keep everything in the picture: their text coordinates don't map to the slide
-            if page.rotation == 0:
-                for block in page.get_text("dict", flags=pymupdf.TEXTFLAGS_TEXT)["blocks"]:
-                    for line in block.get("lines", []):
-                        horizontal = abs(line["dir"][1]) < 1e-3 and line["dir"][0] > 0
-                        spans = [sp for sp in line["spans"] if sp["text"].strip()]
-                        if not horizontal or not spans:
-                            continue
-                        lines.append((pymupdf.Rect(line["bbox"]), line["spans"]))
-                        for sp in line["spans"]:
-                            page.add_redact_annot(pymupdf.Rect(sp["bbox"]), fill=False)
-                if lines:
-                    # strip only the text we re-create; images and vector art stay in the background
-                    page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE,
-                                          graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
-                                          text=pymupdf.PDF_REDACT_TEXT_REMOVE)
-
-            slide = prs.slides.add_slide(blank)
-            img = Path(tmp_dir) / f"slide{i}.png"
-            page.get_pixmap(dpi=150).save(img)
-            slide.shapes.add_picture(str(img), 0, 0, prs.slide_width, prs.slide_height)
-
-            for rect, spans in lines:
-                box = slide.shapes.add_textbox(
-                    Emu(int(rect.x0 * sx * emu)), Emu(int(rect.y0 * sy * emu)),
-                    Emu(int((rect.width * sx * 1.15 + 4) * emu)), Emu(int(rect.height * sy * emu)),
-                )
-                tf = box.text_frame
-                tf.word_wrap = False
-                tf.auto_size = MSO_AUTO_SIZE.NONE
-                tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
-                para = tf.paragraphs[0]
-                for sp in spans:
-                    text = _xml_safe(sp["text"])
-                    if not text:
-                        continue
-                    run = para.add_run()
-                    run.text = text
-                    f = run.font
-                    f.size = Pt(max(1.0, sp["size"] * sy))
-                    f.bold = bool(sp["flags"] & 16)
-                    f.italic = bool(sp["flags"] & 2)
-                    f.name = _pptx_font(sp["font"])
-                    c = sp["color"]
-                    f.color.rgb = RGBColor((c >> 16) & 255, (c >> 8) & 255, c & 255)
-    prs.save(out)
+    convert(src, out, tmp_dir)
 
 
 def protect(src: str, out: str, password: str) -> None:
