@@ -1,0 +1,21 @@
+services:
+  api:
+    build: ./api
+    environment:
+      MAX_UPLOAD_MB: "100"
+      MAX_HEAVY_JOBS: "2"
+      CORS_ORIGINS: "https://ihatepdfs.oryx3.fr,http://localhost:3000"
+    tmpfs:
+      - /tmp:size=2g
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped

@@ -1,0 +1,13 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+python-multipart>=0.0.20
+pikepdf>=9,<11
+PyMuPDF>=1.25,<2
+pdf2docx>=0.5.8
+pdfplumber>=0.11
+openpyxl>=3.1
+python-pptx>=1.0
+weasyprint>=70,<71
+ocrmypdf>=16,<18
+pillow>=10
+numpy>=1.26
