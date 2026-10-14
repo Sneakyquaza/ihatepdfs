@@ -41,11 +41,11 @@ const PDF = "application/pdf,.pdf";
 const IMG = "image/png,image/jpeg,image/webp,image/bmp,.png,.jpg,.jpeg,.webp,.bmp";
 
 const C = {
-  red: "#e5322d",
+  brand: "#7c3aed",
   orange: "#f08c00",
   green: "#2f9e44",
   blue: "#1c7ed6",
-  violet: "#7048e8",
+  indigo: "#4263eb",
   pink: "#d6336c",
   teal: "#0c8599",
   gray: "#495057",
@@ -55,18 +55,18 @@ const pagesOpt: OptionDef = { type: "text", key: "pages", default: "", placehold
 
 export const TOOLS: Tool[] = [
   // ---------- Organize ----------
-  { id: "merge-pdf", category: "organize", icon: "Combine", color: C.red, accept: PDF, multiple: true, minFiles: 2, mode: "client" },
+  { id: "merge-pdf", category: "organize", icon: "Combine", color: C.brand, accept: PDF, multiple: true, minFiles: 2, mode: "client" },
   {
-    id: "split-pdf", category: "organize", icon: "Scissors", color: C.red, accept: PDF, multiple: false, mode: "client",
+    id: "split-pdf", category: "organize", icon: "Scissors", color: C.brand, accept: PDF, multiple: false, mode: "client",
     options: [
       { type: "select", key: "splitMode", options: ["ranges", "every", "fixed"], default: "ranges" },
       { type: "text", key: "ranges", default: "1-2", placeholder: "1-3,4,5-8", showIf: { key: "splitMode", equals: "ranges" } },
       { type: "number", key: "chunk", min: 1, default: 2, showIf: { key: "splitMode", equals: "fixed" } },
     ],
   },
-  { id: "remove-pages", category: "organize", icon: "FileMinus", color: C.red, accept: PDF, multiple: false, mode: "client", options: [pagesOpt] },
-  { id: "extract-pages", category: "organize", icon: "FileOutput", color: C.red, accept: PDF, multiple: false, mode: "client", options: [pagesOpt] },
-  { id: "organize-pdf", category: "organize", icon: "LayoutGrid", color: C.red, accept: PDF, multiple: true, mode: "client", editor: "organize" },
+  { id: "remove-pages", category: "organize", icon: "FileMinus", color: C.brand, accept: PDF, multiple: false, mode: "client", options: [pagesOpt] },
+  { id: "extract-pages", category: "organize", icon: "FileOutput", color: C.brand, accept: PDF, multiple: false, mode: "client", options: [pagesOpt] },
+  { id: "organize-pdf", category: "organize", icon: "LayoutGrid", color: C.brand, accept: PDF, multiple: true, mode: "client", editor: "organize" },
 
   // ---------- Optimize ----------
   {
@@ -92,7 +92,7 @@ export const TOOLS: Tool[] = [
   { id: "powerpoint-to-pdf", category: "convert-to", icon: "Presentation", color: C.orange, accept: ".ppt,.pptx,.odp", multiple: true, mode: "server", endpoint: "office-to-pdf" },
   { id: "excel-to-pdf", category: "convert-to", icon: "Sheet", color: C.green, accept: ".xls,.xlsx,.ods,.csv", multiple: true, mode: "server", endpoint: "office-to-pdf" },
   {
-    id: "html-to-pdf", category: "convert-to", icon: "Globe", color: C.violet, accept: ".html,.htm", multiple: false, minFiles: 0, mode: "server", endpoint: "html-to-pdf",
+    id: "html-to-pdf", category: "convert-to", icon: "Globe", color: C.indigo, accept: ".html,.htm", multiple: false, minFiles: 0, mode: "server", endpoint: "html-to-pdf",
     options: [{ type: "text", key: "url", default: "", placeholder: "https://example.com" }],
   },
 
@@ -111,14 +111,14 @@ export const TOOLS: Tool[] = [
 
   // ---------- Edit ----------
   {
-    id: "rotate-pdf", category: "edit", icon: "RotateCw", color: C.violet, accept: PDF, multiple: true, mode: "client",
+    id: "rotate-pdf", category: "edit", icon: "RotateCw", color: C.indigo, accept: PDF, multiple: true, mode: "client",
     options: [
       { type: "select", key: "angle", options: ["90", "180", "270"], default: "90" },
       pagesOpt,
     ],
   },
   {
-    id: "page-numbers", category: "edit", icon: "ListOrdered", color: C.violet, accept: PDF, multiple: true, mode: "client",
+    id: "page-numbers", category: "edit", icon: "ListOrdered", color: C.indigo, accept: PDF, multiple: true, mode: "client",
     options: [
       { type: "select", key: "position", options: ["bottom-center", "bottom-right", "bottom-left", "top-center", "top-right", "top-left"], default: "bottom-center" },
       { type: "select", key: "numberFormat", options: ["n", "n-of-total", "page-n"], default: "n" },
@@ -127,11 +127,11 @@ export const TOOLS: Tool[] = [
     ],
   },
   {
-    id: "watermark-pdf", category: "edit", icon: "Stamp", color: C.violet, accept: PDF, multiple: true, mode: "client",
+    id: "watermark-pdf", category: "edit", icon: "Stamp", color: C.indigo, accept: PDF, multiple: true, mode: "client",
     options: [
       { type: "text", key: "text", default: "CONFIDENTIEL" },
       { type: "number", key: "fontSize", min: 8, max: 200, default: 60 },
-      { type: "color", key: "color", default: "#e5322d" },
+      { type: "color", key: "color", default: "#e03131" },
       { type: "range", key: "opacity", min: 0.05, max: 1, step: 0.05, default: 0.3 },
       { type: "select", key: "layout", options: ["diagonal", "horizontal", "tiled"], default: "diagonal" },
     ],

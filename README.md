@@ -1,4 +1,4 @@
-# iHatePDFs — outils PDF & image (type iLovePDF)
+# iHatePDFs — outils PDF & image gratuits
 
 34 outils, FR/EN. Architecture hybride : le léger tourne dans le navigateur, le lourd sur une API Python.
 
@@ -27,6 +27,10 @@ cd web && npm install && npm run dev
 | Navigateur | fusionner, diviser, supprimer/extraire pages, organiser (glisser-déposer), pivoter, numéroter, filigrane, éditer (texte/formes/surlignage/masquage), signer (dessin/texte/import), PDF→image, image→PDF, **suppression d'arrière-plan IA**, redimensionner, recadrer, compresser, convertir, pivoter/miroir, filigrane image |
 | Serveur | compresser, réparer, OCR, PDF/A, Word/PowerPoint/Excel→PDF, HTML/URL→PDF, PDF→Word/Excel/PowerPoint, protéger, déverrouiller, comparer, agrandissement IA x2/x4 |
 
+## Tests
+
+`./e2e/run.sh [url] [outils]` — tests de bout en bout Playwright (via Docker) sur tous les outils.
+
 ## Ajouter un outil
 
 1. Déclarer dans `web/src/lib/tools.ts` (catégorie, icône, `accept`, options → formulaire généré automatiquement).
@@ -39,6 +43,14 @@ cd web && npm install && npm run dev
 `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_S` (60 requêtes / 10 min par IP → 429), `RATE_LIMIT_CONCURRENT` (3 par IP), `CORS_ORIGINS`.
 L'IP client vient de l'en-tête `X-Client-IP` posé (écrasé) par Apache : le client ne peut pas le falsifier.
 Les fichiers serveur vivent dans un dossier temporaire supprimé après la réponse. HTML→PDF bloque les URL vers des IP privées (y compris via redirection).
+
+## Déploiement
+
+Mettre un reverse proxy TLS devant `127.0.0.1:3000` (le conteneur `web`). Il doit :
+- poser l'en-tête `X-Client-IP` avec l'IP du visiteur en **écrasant** toute valeur reçue (utilisé par la limitation par IP de l'API) ;
+- autoriser des réponses lentes (OCR / conversions Office : jusqu'à 10 min) et des uploads d'au moins 100 Mo.
+
+Mise à jour : `./deploy/update.sh` (git pull + rebuild + restart).
 
 ## Licence
 

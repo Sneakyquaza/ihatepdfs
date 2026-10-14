@@ -1,4 +1,4 @@
-import { HeartCrack } from "lucide-react";
+import { Heart, HeartCrack } from "lucide-react";
 import Link from "next/link";
 import type { Dict, Locale } from "@/i18n";
 import { LocaleSwitcher } from "./LocaleSwitcher";
@@ -11,12 +11,13 @@ export function Header({ locale, t }: { locale: Locale; t: Dict }) {
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white" aria-hidden>
             <HeartCrack className="h-5 w-5" />
           </span>
-          {/* "iLovePDFs" with "Love" struck out and "Hate" scribbled underneath */}
-          <span className="flex items-baseline leading-none" aria-hidden>
+          {/* "i ♥ PDFs" with the heart struck out and "Hate" scribbled underneath */}
+          <span className="flex items-center leading-none" aria-hidden>
             i
-            <span className="relative">
-              <span className="text-brand line-through decoration-ink decoration-[3px]">Love</span>
-              <span className="absolute left-1/2 top-[75%] -translate-x-1/2 -rotate-6 font-hand text-lg font-bold text-ink">
+            <span className="relative mx-1 inline-flex">
+              <Heart className="h-5 w-5 fill-brand text-brand" />
+              <span className="absolute left-1/2 top-1/2 h-[2.5px] w-[125%] -translate-x-1/2 -translate-y-1/2 -rotate-[25deg] rounded-full bg-ink" />
+              <span className="absolute left-1/2 top-[95%] -translate-x-1/2 -rotate-6 font-hand text-lg font-bold text-ink">
                 Hate
               </span>
             </span>

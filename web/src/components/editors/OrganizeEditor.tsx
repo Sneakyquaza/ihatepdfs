@@ -12,7 +12,7 @@ interface Item extends OrganizeItem {
   deleted: boolean;
 }
 
-const PALETTE = ["#e5322d", "#1c7ed6", "#2f9e44", "#f08c00", "#7048e8", "#0c8599"];
+const PALETTE = ["#7c3aed", "#1c7ed6", "#2f9e44", "#f08c00", "#7048e8", "#0c8599"];
 
 export default function OrganizeEditor({ files, onChange, t }: EditorProps<OrganizeItem[]>) {
   const [items, setItems] = useState<Item[]>([]);

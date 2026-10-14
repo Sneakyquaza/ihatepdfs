@@ -25,7 +25,7 @@ export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditIt
   const { doc } = usePdfDoc(files[0]);
   const [page, setPage] = useState(0);
   const [tool, setTool] = useState<ToolKind>("text");
-  const [color, setColor] = useState("#e5322d");
+  const [color, setColor] = useState("#e03131");
   const [size, setSize] = useState(16);
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<string | null>(null);

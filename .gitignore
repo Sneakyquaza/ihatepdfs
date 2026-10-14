@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 .env*
 web/public/pdf.worker.min.mjs
+
+# Server-specific reverse proxy config (kept locally, not published)
+deploy/*.conf
