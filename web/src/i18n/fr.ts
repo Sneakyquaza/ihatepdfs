@@ -107,6 +107,7 @@ export const fr = {
     startOver: "Recommencer",
     error: "Une erreur est survenue",
     needFiles: "Ajoutez au moins {n} fichier(s).",
+    needUrlOrFile: "Saisissez une URL ou importez un fichier HTML.",
     maxFiles: "Maximum {n} fichier(s).",
     local: "Traité dans votre navigateur",
     server: "Traité sur notre serveur, supprimé ensuite",
@@ -251,6 +252,7 @@ export const fr = {
     cropHint: "Glissez le cadre ou ses coins pour recadrer.",
   },
   errors: {
+    no_text: "Aucun texte trouvé dans « {name} ». S'il s'agit d'un scan, essayez l'OCR.",
     too_many_pages: "Trop de pages (maximum {max}). Divisez le PDF d'abord.",
     too_complex: "Fichier trop lourd ou trop complexe à traiter.",
     encrypted: "« {name} » est protégé par un mot de passe. Déverrouillez-le d'abord.",

@@ -341,6 +341,8 @@ export async function pdfToText(files: File[]): Promise<OutputFile[]> {
         }
         pages.push(text.trim());
       }
+      // scanned PDF: an empty .txt would look like a bug, point to OCR instead
+      if (!pages.some(Boolean)) throw new AppError("no_text", { name: f.name });
       const body = pages.map((t, i) => (doc.numPages > 1 ? `--- Page ${i + 1} ---\n${t}` : t)).join("\n\n");
       outs.push({ name: `${baseName(f.name)}.txt`, blob: new Blob([body + "\n"], { type: "text/plain;charset=utf-8" }) });
     } finally {

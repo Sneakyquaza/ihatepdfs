@@ -1,7 +1,7 @@
 "use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 
 type Mode = "system" | "light" | "dark";
 const KEY = "ihp:theme";
@@ -37,6 +37,10 @@ function subscribe(cb: () => void) {
 export function ThemeToggle({ labels }: { labels: Record<Mode, string> }) {
   // server snapshot is "system", so hydration matches; the client then switches to the stored mode
   const mode = useSyncExternalStore(subscribe, readMode, () => "system" as Mode);
+
+  // <html> lives in the [locale] layout: switching locale (or rendering the 404 shell) creates a new
+  // element on the client without THEME_SCRIPT running again. Re-apply before paint on every mount.
+  useLayoutEffect(() => apply(readMode()), []);
 
   useEffect(() => {
     if (mode !== "system") return;

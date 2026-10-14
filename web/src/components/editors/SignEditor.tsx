@@ -138,7 +138,7 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
         {mode !== "upload" && (
           <div className="flex gap-2">
             {INK.map((c) => (
-              <button key={c} onClick={() => setInk(c)} className={`h-7 w-7 rounded-full ring-offset-2 ${ink === c ? "ring-2 ring-ink" : ""}`} style={{ background: c }} aria-label={c} />
+              <button key={c} onClick={() => setInk(c)} className={`h-7 w-7 rounded-full ring-offset-2 ring-offset-surface ${ink === c ? "ring-2 ring-ink" : "ring-1 ring-line"}`} style={{ background: c }} aria-label={c} />
             ))}
           </div>
         )}
@@ -149,7 +149,7 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
               ref={padRef}
               width={600}
               height={240}
-              className="w-full touch-none rounded-xl border-2 border-dashed border-line bg-surface"
+              className="w-full touch-none rounded-xl border-2 border-dashed border-line bg-white"
               onPointerDown={(e) => {
                 drawing.current = true;
                 e.currentTarget.setPointerCapture(e.pointerId);
@@ -181,7 +181,7 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
           <div className="space-y-2">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.editors.signName} className="w-full rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-brand" />
             {FONTS.map((f, i) => (
-              <button key={f} onClick={() => setFont(i)} className={`block w-full truncate rounded-lg border px-3 py-2 text-left text-2xl ${font === i ? "border-brand" : "border-line"}`} style={{ fontFamily: f, color: ink }}>
+              <button key={f} onClick={() => setFont(i)} className={`block w-full truncate rounded-lg border bg-white px-3 py-2 text-left text-2xl ${font === i ? "border-brand" : "border-line"}`} style={{ fontFamily: f, color: ink }}>
                 {name || "Signature"}
               </button>
             ))}
@@ -193,14 +193,14 @@ export default function SignEditor({ files, onChange, t }: EditorProps<SignPlace
         )}
 
         {sig && (
-          <div className="checker grid h-24 place-items-center rounded-xl p-2 ring-1 ring-line">
+          <div className="grid h-24 place-items-center rounded-xl bg-white p-2 ring-1 ring-line">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={sig.url} alt="" className="max-h-full max-w-full" />
           </div>
         )}
 
         {selected && (
-          <button onClick={() => { setPlaced((p) => p.filter((x) => x.id !== selected)); setSelected(null); }} className="flex items-center gap-2 text-sm font-semibold text-brand">
+          <button onClick={() => { setPlaced((p) => p.filter((x) => x.id !== selected)); setSelected(null); }} className="flex items-center gap-2 text-sm font-semibold text-accent">
             <Trash2 className="h-4 w-4" /> {t.editors.editDeleteSel}
           </button>
         )}

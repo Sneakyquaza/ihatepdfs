@@ -44,9 +44,9 @@ export default async function LocaleLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body className={`${geist.variable} ${caveat.variable} min-h-screen font-sans antialiased`}>
+      <body className={`${geist.variable} ${caveat.variable} flex min-h-screen flex-col font-sans antialiased`}>
         <Header locale={locale} t={t} />
-        <main>{children}</main>
+        <main className="flex-1">{children}</main>
         <footer className="mt-24 border-t border-line bg-surface">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-8 text-sm text-muted sm:flex-row sm:justify-between">
             <p>{t.footer.tagline}</p>

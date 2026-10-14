@@ -56,7 +56,7 @@ const cases = [
   ["pdf-to-text", ["a.pdf"]],
   ["crop-pdf", ["a.pdf"], async (p) => p.getByRole("button", { name: "1:1" }).click()],
   ["edit-metadata", ["a.pdf"], async (p) => p.getByLabel("Tout effacer").check()],
-  ["image-to-text", ["photo.png"]],
+  ["image-to-text", ["text.png"]],
   ["redact-pdf", ["a.pdf"], async (p) => {
     await p.waitForSelector("[data-overlay]");
     const o = await p.locator("[data-overlay]").boundingBox();
@@ -76,13 +76,17 @@ const cases = [
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME });
-  const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1360, height: 900 } });
+  // THEME=dark|light forces the theme, MOBILE=1 a phone viewport, SHOTS=1 screenshots each tool before/after the run
+  const ctx = await browser.newContext({ acceptDownloads: true, viewport: process.env.MOBILE ? { width: 375, height: 740 } : { width: 1360, height: 900 } });
+  if (process.env.THEME) await ctx.addInitScript((t) => { try { localStorage.setItem("ihp:theme", t); } catch {} }, process.env.THEME);
+  const shot = (p, id, n) => process.env.SHOTS && p.screenshot({ path: path.join(OUT, `shot_${process.env.THEME || "x"}${process.env.MOBILE ? "-m" : ""}_${id}_${n}.png`), fullPage: true });
   const only = process.argv[2];
   for (const [id, files, setup] of cases) {
     if (only && !only.split(",").includes(id)) continue;
     const p = await ctx.newPage();
     const errs = [];
     p.on("pageerror", (e) => errs.push(e.message));
+    p.on("console", (m) => { if (m.type() === "error") errs.push("console: " + m.text().slice(0, 200)); });
     const t0 = Date.now();
     try {
       await p.goto(`${BASE}/${id}`);
@@ -90,12 +94,14 @@ const cases = [
       if (setup) await setup(p);
       const runBtn = p.locator("aside button").last();
       await runBtn.waitFor();
+      await shot(p, id, "1");
       const dl = p.waitForEvent("download", { timeout: 120000 }).catch(() => null);
       await runBtn.click();
       const done = p.getByText("Terminé !");
       const err = p.locator("aside .bg-red-50");
       await Promise.race([done.waitFor({ timeout: 120000 }), err.waitFor({ timeout: 120000 })]);
       if (await err.isVisible()) throw new Error(await err.innerText());
+      await shot(p, id, "2");
       let d = await Promise.race([dl, p.waitForTimeout(1500).then(() => null)]);
       if (!d) {
         const zipDl = p.waitForEvent("download");
@@ -241,8 +247,15 @@ const cases = [
     const dark1 = await pt.evaluate(() => document.documentElement.dataset.theme);
     await pt.reload();
     const dark2 = await pt.evaluate(() => document.documentElement.dataset.theme);
+    // <html> is re-created when the locale changes: the theme must survive, and ?cat= too
+    await pt.goto(`${BASE}?cat=image#tools`);
+    await pt.getByRole("link", { name: "en", exact: true }).click();
+    await pt.waitForURL(/\/en\?cat=image/);
+    const dark3 = await pt.evaluate(() => document.documentElement.dataset.theme);
+    await pt.getByRole("link", { name: "fr", exact: true }).click();
+    await pt.waitForURL(/\/fr\?cat=image/);
     await pt.getByRole("button", { name: /Thème : sombre/ }).click(); // -> back to system
-    check(dark1 === "dark" && dark2 === "dark", "dark theme", `after click=${dark1} after reload=${dark2}`);
+    check(dark1 === "dark" && dark2 === "dark" && dark3 === "dark", "dark theme", `after click=${dark1} after reload=${dark2} after locale switch=${dark3}`);
     await pt.close();
 
     // mobile menu

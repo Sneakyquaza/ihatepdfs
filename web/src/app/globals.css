@@ -13,6 +13,8 @@
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-line: var(--line);
+  /* brand-coloured text/icons: lighter in dark mode for contrast (bg-brand stays the same) */
+  --color-accent: var(--accent);
 }
 
 :root {
@@ -22,6 +24,7 @@
   --surface: #ffffff;
   --line: rgb(0 0 0 / 0.1);
   --checker: #e5e5ea;
+  --accent: #7c3aed;
   color-scheme: light;
 }
 
@@ -32,6 +35,7 @@
   --surface: #1c1c22;
   --line: rgb(255 255 255 / 0.12);
   --checker: #2a2a31;
+  --accent: #a78bfa;
   color-scheme: dark;
 }
 

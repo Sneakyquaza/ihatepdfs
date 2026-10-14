@@ -36,7 +36,7 @@ export function FileGrid({
                 </button>
               </>
             )}
-            <button onClick={() => onRemove(i)} className="rounded-full bg-surface p-1 text-brand shadow" aria-label={`${t.runner.remove} ${f.name}`}>
+            <button onClick={() => onRemove(i)} className="rounded-full bg-surface p-1 text-accent shadow" aria-label={`${t.runner.remove} ${f.name}`}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -49,7 +49,7 @@ export function FileGrid({
         <li>
           <button
             onClick={onAdd}
-            className="grid aspect-[3/4] w-full place-items-center rounded-2xl border-2 border-dashed border-line text-muted transition hover:border-brand hover:text-brand"
+            className="grid aspect-[3/4] w-full place-items-center rounded-2xl border-2 border-dashed border-line text-muted transition hover:border-brand hover:text-accent"
           >
             <span className="flex flex-col items-center gap-2 text-sm font-semibold">
               <Plus className="h-8 w-8" />

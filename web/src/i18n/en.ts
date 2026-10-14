@@ -109,6 +109,7 @@ export const en: Dict = {
     startOver: "Start over",
     error: "Something went wrong",
     needFiles: "Add at least {n} file(s).",
+    needUrlOrFile: "Enter a URL or import an HTML file.",
     maxFiles: "At most {n} file(s).",
     local: "Processed in your browser",
     server: "Processed on our server, then deleted",
@@ -253,6 +254,7 @@ export const en: Dict = {
     cropHint: "Drag the frame or its corners to crop.",
   },
   errors: {
+    no_text: "No text found in “{name}”. If it is a scan, try OCR.",
     too_many_pages: "Too many pages (max {max}). Split the PDF first.",
     too_complex: "File too heavy or complex to process.",
     encrypted: "“{name}” is password protected. Unlock it first.",

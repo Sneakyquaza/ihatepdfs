@@ -258,6 +258,8 @@ async def image_to_text(file: UploadFile = File(...), lang: str = Form("eng")):
         src = await save_upload(file, ws, IMAGES)
         base = ws.path / "ocr"
         await run(["tesseract", str(src), str(base), "-l", langs], timeout=180)
+        if not base.with_suffix(".txt").read_text(errors="replace").strip():
+            raise ApiError(422, "no_text", "No text found", name=file.filename or "")
         return send(base.with_suffix(".txt"), f"{stem_of(file)}.txt", ws)
 
     return await handle(work)

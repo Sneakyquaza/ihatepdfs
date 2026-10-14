@@ -1,6 +1,6 @@
 import { Lock, ShieldCheck, Zap } from "lucide-react";
 import { Suspense } from "react";
-import { ToolGrid } from "@/components/ToolGrid";
+import { ToolGrid, ToolGridFromUrl } from "@/components/ToolGrid";
 import { getDict, isLocale } from "@/i18n";
 import { notFound } from "next/navigation";
 
@@ -18,8 +18,9 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
       </section>
 
       <section id="tools" className="mx-auto max-w-7xl scroll-mt-20 px-4">
-        <Suspense>
-          <ToolGrid locale={locale} />
+        {/* the fallback is what the static HTML (and crawlers) get: the full, unfiltered grid */}
+        <Suspense fallback={<ToolGrid locale={locale} catParam={null} />}>
+          <ToolGridFromUrl locale={locale} />
         </Suspense>
       </section>
 
@@ -30,7 +31,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
             const Icon = WHY_ICONS[i];
             return (
               <div key={w.title} className="rounded-2xl bg-surface p-6 shadow-sm">
-                <Icon className="h-8 w-8 text-brand" />
+                <Icon className="h-8 w-8 text-accent" />
                 <h3 className="mt-4 text-lg font-bold">{w.title}</h3>
                 <p className="mt-2 text-sm text-muted">{w.text}</p>
               </div>

@@ -60,7 +60,7 @@ export function OptionsForm({
                       type="button"
                       onClick={() => set(d.key, o)}
                       className={`rounded-lg border px-2 py-2 text-xs font-semibold leading-tight transition ${
-                        values[d.key] === o ? "border-brand bg-brand/5 text-brand" : "border-line bg-surface hover:border-ink/30"
+                        values[d.key] === o ? "border-brand bg-brand/5 text-accent" : "border-line bg-surface hover:border-ink/30"
                       }`}
                     >
                       {valueLabel(o)}

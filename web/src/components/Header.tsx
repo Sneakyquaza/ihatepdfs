@@ -8,7 +8,7 @@ import { ThemeToggle } from "./ThemeToggle";
 export function Header({ locale, t }: { locale: Locale; t: Dict }) {
   const links = [
     { href: `/${locale}#tools`, label: t.nav.allTools },
-    { href: `/${locale}?cat=organize#tools`, label: t.nav.pdfTools },
+    { href: `/${locale}?cat=pdf#tools`, label: t.nav.pdfTools },
     { href: `/${locale}?cat=image#tools`, label: t.nav.imageTools },
   ];
   return (

@@ -40,7 +40,7 @@ export default function RedactEditor({ files, onChange, t }: EditorProps<Box[]>)
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-semibold">{boxes.length} {t.editors.areas}</span>
         {selected && (
-          <button onClick={() => { setBoxes((all) => all.filter((b) => b.id !== selected)); setSelected(null); }} className="flex items-center gap-1.5 font-semibold text-brand">
+          <button onClick={() => { setBoxes((all) => all.filter((b) => b.id !== selected)); setSelected(null); }} className="flex items-center gap-1.5 font-semibold text-accent">
             <Trash2 className="h-4 w-4" /> {t.editors.editDeleteSel}
           </button>
         )}

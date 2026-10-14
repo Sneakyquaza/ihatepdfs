@@ -12,7 +12,7 @@ function Linkified({ text }: { text: string }) {
         if (i % 2 === 0) return <Fragment key={i}>{p}</Fragment>;
         const href = p.includes("@") && !p.startsWith("http") ? `mailto:${p}` : p;
         return (
-          <a key={i} href={href} className="font-medium text-brand underline" rel="noopener">
+          <a key={i} href={href} className="font-medium text-accent underline" rel="noopener">
             {p}
           </a>
         );

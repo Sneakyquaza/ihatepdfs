@@ -51,12 +51,17 @@ function ToolCard({
 
 const grid = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
-export function ToolGrid({ locale }: { locale: Locale }) {
+/** Reads ?cat= on the client; render inside <Suspense fallback={<ToolGrid ... cat={null} />}> so the static HTML lists every tool. */
+export function ToolGridFromUrl({ locale }: { locale: Locale }) {
+  return <ToolGrid locale={locale} catParam={useSearchParams().get("cat")} />;
+}
+
+export function ToolGrid({ locale, catParam }: { locale: Locale; catParam: string | null }) {
   const t = getDict(locale);
   const router = useRouter();
-  const params = useSearchParams();
-  const catParam = params.get("cat");
   const cat = CATEGORIES.includes(catParam as Category) ? (catParam as Category) : null;
+  // ?cat=pdf (header "PDF tools" link): every category except images
+  const pdfOnly = catParam === "pdf";
   const [query, setQuery] = useState("");
   const { recent, favorites, toggleFavorite } = usePrefs();
 
@@ -64,11 +69,12 @@ export function ToolGrid({ locale }: { locale: Locale }) {
     const q = query.trim().toLowerCase();
     return TOOLS.filter((tool) => {
       if (cat && tool.category !== cat) return false;
+      if (pdfOnly && tool.category === "image") return false;
       if (!q) return true;
       const { name, desc } = t.tools[tool.id as keyof Dict["tools"]];
       return `${name} ${desc}`.toLowerCase().includes(q);
     });
-  }, [cat, query, t]);
+  }, [cat, pdfOnly, query, t]);
 
   const setCat = (c: Category | null) =>
     router.replace(c ? `/${locale}?cat=${c}#tools` : `/${locale}#tools`, { scroll: false });
@@ -88,7 +94,7 @@ export function ToolGrid({ locale }: { locale: Locale }) {
   );
 
   // Personal shortcuts only on the unfiltered view
-  const showShortcuts = !cat && !query.trim();
+  const showShortcuts = !cat && !pdfOnly && !query.trim();
   const recentTools = recent.filter((id) => !favorites.includes(id)).slice(0, 4).map((id) => TOOL_MAP[id]);
   const favoriteTools = favorites.map((id) => TOOL_MAP[id]);
 
@@ -96,7 +102,7 @@ export function ToolGrid({ locale }: { locale: Locale }) {
     <div>
       <div className="flex flex-col items-center gap-4">
         <div className="flex flex-wrap justify-center gap-2">
-          <button className={chip(!cat)} onClick={() => setCat(null)}>{t.home.all}</button>
+          <button className={chip(!cat && !pdfOnly)} onClick={() => setCat(null)}>{t.home.all}</button>
           {CATEGORIES.map((c) => (
             <button key={c} className={chip(cat === c)} onClick={() => setCat(c)}>{t.categories[c]}</button>
           ))}

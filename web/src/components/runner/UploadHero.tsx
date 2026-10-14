@@ -43,7 +43,7 @@ export function DropOverlay({ t }: { t: Dict }) {
   return (
     <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center bg-brand/10 backdrop-blur-sm">
       <div className="rounded-3xl border-4 border-dashed border-brand bg-surface/90 px-16 py-12 text-center">
-        <Upload className="mx-auto h-12 w-12 text-brand" />
+        <Upload className="mx-auto h-12 w-12 text-accent" />
         <p className="mt-3 text-lg font-bold">{t.runner.drop}</p>
       </div>
     </div>

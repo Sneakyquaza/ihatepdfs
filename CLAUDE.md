@@ -38,6 +38,8 @@ End-to-end (`e2e/`): Playwright drives every tool through the real UI (French lo
 ./e2e/run.sh http://localhost:3000/fr merge-pdf,sign-pdf  # only some tools (ids from tools.ts)
 ```
 
+`./e2e/audit.sh [origin]` loads every page (FR/EN × light/dark × desktop/phone) and reports console errors, failed requests, horizontal overflow and theme loss; screenshots land in `e2e/out/audit/`. Look at them after UI changes.
+
 New tools need a case in `e2e/run.js` (`[id, fixtures, optional setup(page)]`). Server tools count against the API's per-IP rate limit (60 / 10 min); `docker compose restart api` resets it.
 
 ## Architecture
@@ -51,7 +53,7 @@ Three services behind Apache (vhosts in `/etc/apache2/sites-available/ihatepdfs*
 ### Tool registry drives everything
 
 `web/src/lib/tools.ts` (`TOOLS`) declares every tool: category, icon name, `accept`, `mode: "client" | "server"`, `endpoint`, `options` and optional `editor`. From it:
-- the home grid, routes (`generateStaticParams`) and the options form (`OptionsForm`, generated from `OptionDef`s, with `showIf`) are built automatically;
+- the home grid (its `<Suspense>` fallback is the full unfiltered grid, so the static HTML lists every tool; `?cat=<category>` or `?cat=pdf` filters on the client), routes (`generateStaticParams`) and the options form (`OptionsForm`, generated from `OptionDef`s, with `showIf`) are built automatically;
 - `ToolRunner` (orchestration) composes `components/runner/*` (UploadHero, FileGrid, RunPanel, ResultView) and runs `runTool()` (`lib/processors/index.ts`), which either calls a lazily-imported client processor (`processors/pdf.ts`, `processors/image.ts`) or POSTs to `/api/<endpoint>` — one request per file, except `serverInput: "pair"` (`file_a`/`file_b`, compare). Options are sent as form fields with the same keys.
 - Icons must be added to the explicit map in `components/ToolIcon.tsx`.
 
@@ -59,7 +61,7 @@ Adding a tool = registry entry + `tools.<id>` (and any new option/value labels) 
 
 Progress is structured (`Progress` in `processors/index.ts`: phase upload/server/model/work, optional fraction, batch step); server calls use XHR for upload progress. "Continue with…" on the result screen hands the output files to the next tool through IndexedDB (`lib/handoff.ts`: consumed on arrival, 10 min TTL, memory fallback), so it also works across the full page load of `fullPageLoad` tools. `takeHandOff()` shares one in-flight read so StrictMode's double effect can't lose the files.
 
-Theme: colors are tokens (`bg-surface`, `bg-canvas`, `text-ink`, `text-muted`, `border-line`) defined in `globals.css` for light and `[data-theme="dark"]`; don't use `bg-white`/`black/x` in UI chrome (PDF "paper", the signature pad and the white-out tool stay white on purpose). `dark:` targets `[data-theme=dark]`, set before paint by `THEME_SCRIPT`.
+Theme: colors are tokens (`bg-surface`, `bg-canvas`, `text-ink`, `text-muted`, `border-line`) defined in `globals.css` for light and `[data-theme="dark"]`; don't use `bg-white`/`black/x` in UI chrome (PDF "paper", the signature pad and the white-out tool stay white on purpose). `dark:` targets `[data-theme=dark]`, set before paint by `THEME_SCRIPT`. `<html>` lives in the `[locale]` layout, so a locale switch (or the 404 shell) re-creates it on the client without that script: `ThemeToggle` re-applies the theme in a layout effect on mount. Brand-coloured text/icons use `text-accent` (lighter in dark mode); `bg-brand` stays for filled buttons.
 
 Editors are keyboard-operable: boxes are focusable buttons using `handleBoxKey` (arrows move, Alt+arrows resize, Delete removes).
 

@@ -195,7 +195,7 @@ export default function EditPdfEditor({ files, onChange, t }: EditorProps<EditIt
             </p>
           )}
           {selected && (
-            <button onClick={remove} className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-brand hover:bg-brand/5">
+            <button onClick={remove} className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-accent hover:bg-brand/5">
               <Trash2 className="h-4 w-4" /> <span className="hidden sm:inline">{t.editors.editDeleteSel}</span>
             </button>
           )}

@@ -22,7 +22,7 @@ export default function RegionsEditor({ files, onChange, t }: EditorProps<CropRe
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-semibold">{boxes.length} {t.editors.areas}</span>
         {selected && (
-          <button onClick={() => { setBoxes((b) => b.filter((x) => x.id !== selected)); setSelected(null); }} className="flex items-center gap-1.5 font-semibold text-brand">
+          <button onClick={() => { setBoxes((b) => b.filter((x) => x.id !== selected)); setSelected(null); }} className="flex items-center gap-1.5 font-semibold text-accent">
             <Trash2 className="h-4 w-4" /> {t.editors.editDeleteSel}
           </button>
         )}

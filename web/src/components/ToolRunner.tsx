@@ -102,7 +102,7 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
   const tooBig = tool.mode === "server" && files.find((f) => f.size > SERVER_MAX_MB * 1024 * 1024);
   const validation = (() => {
     if (tooBig) return fmt(t.errors.file_too_large, { max: SERVER_MAX_MB });
-    if (tool.id === "html-to-pdf") return files.length || String(opts.url).trim() ? "" : fmt(t.runner.needFiles, { n: 1 });
+    if (tool.id === "html-to-pdf") return files.length || String(opts.url).trim() ? "" : t.runner.needUrlOrFile;
     if (files.length < minFiles) return fmt(t.runner.needFiles, { n: minFiles });
     if (tool.maxFiles && files.length > tool.maxFiles) return fmt(t.runner.maxFiles, { n: tool.maxFiles });
     return "";

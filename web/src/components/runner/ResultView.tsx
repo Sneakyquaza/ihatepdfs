@@ -71,7 +71,7 @@ export function ResultView({ tool, outputs, t, locale, onReset }: { tool: Tool; 
                 <ExternalLink className="h-5 w-5" />
               </button>
             )}
-            <button onClick={() => downloadBlob(o.blob, o.name)} className="rounded-lg p-2 text-brand hover:bg-brand/5" aria-label={`${t.runner.download} ${o.name}`} title={t.runner.download}>
+            <button onClick={() => downloadBlob(o.blob, o.name)} className="rounded-lg p-2 text-accent hover:bg-brand/5" aria-label={`${t.runner.download} ${o.name}`} title={t.runner.download}>
               <Download className="h-5 w-5" />
             </button>
           </li>
@@ -98,8 +98,8 @@ export function ResultView({ tool, outputs, t, locale, onReset }: { tool: Tool; 
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg" style={{ background: `${next.color}18`, color: next.color }}>
                   <ToolIcon name={next.icon} className="h-5 w-5" />
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm">{t.tools[next.id as keyof Dict["tools"]].name}</span>
-                <ArrowRight className="h-4 w-4 text-muted transition group-hover:translate-x-0.5 group-hover:text-brand" />
+                <span className="line-clamp-2 min-w-0 flex-1 text-sm leading-tight">{t.tools[next.id as keyof Dict["tools"]].name}</span>
+                <ArrowRight className="h-4 w-4 text-muted transition group-hover:translate-x-0.5 group-hover:text-accent" />
               </button>
             ))}
           </div>
