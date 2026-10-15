@@ -24,7 +24,13 @@ const cases = [
   ["watermark-image", ["photo.png"]],
   ["compress-pdf", ["a.pdf"]],
   ["word-to-pdf", ["doc.txt"]],
+  ["powerpoint-to-pdf", ["slides.odp"]],
+  ["excel-to-pdf", ["sheet.csv"]],
   ["pdf-to-word", ["a.pdf"]],
+  ["repair-pdf", ["a.pdf"]],
+  ["ocr-pdf", ["scan.pdf"]],
+  ["pdf-to-pdfa", ["a.pdf"]],
+  ["unlock-pdf", ["locked.pdf"], async (p) => p.fill("#opt-password", "secret")],
   ["pdf-to-powerpoint", ["a.pdf"]],
   ["pdf-to-excel", ["a.pdf"]],
   ["protect-pdf", ["a.pdf"], async (p) => p.fill("#opt-password", "x")],
@@ -75,6 +81,15 @@ const cases = [
 ];
 
 (async () => {
+  {
+    // password-protected input for unlock-pdf (and the "encrypted pdf" check below)
+    const fs = require("fs");
+    const form = new FormData();
+    form.append("file", new Blob([fs.readFileSync(F("a.pdf"))]), "a.pdf");
+    form.append("password", "secret");
+    const enc = await fetch(new URL("/api/protect-pdf", BASE), { method: "POST", body: form });
+    fs.writeFileSync(F("locked.pdf"), Buffer.from(await enc.arrayBuffer()));
+  }
   const browser = await chromium.launch({ executablePath: process.env.CHROME });
   // THEME=dark|light forces the theme, MOBILE=1 a phone viewport, SHOTS=1 screenshots each tool before/after the run
   const ctx = await browser.newContext({ acceptDownloads: true, viewport: process.env.MOBILE ? { width: 375, height: 740 } : { width: 1360, height: 900 } });

@@ -76,5 +76,52 @@ function png(w, h, pixel) {
     const g = G[word[Math.floor(cx / 6)]];
     return x >= M && y >= M && cy < 7 && g && cx % 6 < 5 && g[cy][cx % 6] === "1" ? [0, 0, 0] : [255, 255, 255];
   }));
+  // image-only PDF (no text layer), for OCR
+  {
+    const doc = await PDFDocument.create();
+    const img = await doc.embedPng(fs.readFileSync(out("text.png")));
+    const page = doc.addPage([400, 200]);
+    page.drawImage(img, { x: 20, y: 60, width: img.width * 0.6, height: img.height * 0.6 });
+    fs.writeFileSync(out("scan.pdf"), await doc.save());
+  }
+  fs.writeFileSync(out("sheet.csv"), "Nom;Montant\nAlice;12,5\nBob;7\n");
+  // minimal ODP (zip with stored entries, mimetype first)
+  {
+    const crcTable = Array.from({ length: 256 }, (_, n) => {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      return c >>> 0;
+    });
+    const crc = (buf) => {
+      let c = 0xffffffff;
+      for (const b of buf) c = crcTable[(c ^ b) & 255] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    };
+    const MIME = "application/vnd.oasis.opendocument.presentation";
+    const entries = [
+      ["mimetype", MIME],
+      ["META-INF/manifest.xml", `<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2"><manifest:file-entry manifest:full-path="/" manifest:media-type="${MIME}"/><manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/></manifest:manifest>`],
+      ["content.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" office:version="1.2"><office:body><office:presentation><draw:page draw:name="page1"><draw:frame svg:x="2cm" svg:y="2cm" svg:width="20cm" svg:height="3cm"><draw:text-box><text:p>Hello from odp</text:p></draw:text-box></draw:frame></draw:page></office:presentation></office:body></office:document-content>`],
+    ];
+    const parts = [], central = [];
+    let offset = 0;
+    for (const [name, text] of entries) {
+      const n = Buffer.from(name), d = Buffer.from(text), c = crc(d);
+      const h = Buffer.alloc(30);
+      h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4);
+      h.writeUInt32LE(c, 14); h.writeUInt32LE(d.length, 18); h.writeUInt32LE(d.length, 22); h.writeUInt16LE(n.length, 26);
+      const e = Buffer.alloc(46);
+      e.writeUInt32LE(0x02014b50, 0); e.writeUInt16LE(20, 4); e.writeUInt16LE(20, 6);
+      e.writeUInt32LE(c, 16); e.writeUInt32LE(d.length, 20); e.writeUInt32LE(d.length, 24); e.writeUInt16LE(n.length, 28);
+      e.writeUInt32LE(offset, 42);
+      parts.push(h, n, d); central.push(e, n);
+      offset += 30 + n.length + d.length;
+    }
+    const cd = Buffer.concat(central);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+    end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+    fs.writeFileSync(out("slides.odp"), Buffer.concat([...parts, cd, end]));
+  }
   fs.writeFileSync(out("doc.txt"), "Hello from txt\nline2\n");
 })();
