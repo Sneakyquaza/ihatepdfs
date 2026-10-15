@@ -55,6 +55,21 @@ function png(w, h, pixel) {
     for (let i = 0; i < 3; i++) doc.addPage().drawText(`${text} Page ${i + 1}`, { x: 72, y: 760 - i * 20, size: 14, font });
     fs.writeFileSync(out(name), await doc.save());
   }
+  // AcroForm with a text field, checkbox, dropdown and radio group, for fill-pdf-form
+  {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage();
+    const form = doc.getForm();
+    form.createTextField("fullname").addToPage(page, { x: 72, y: 700, width: 220, height: 24 });
+    form.createCheckBox("agree").addToPage(page, { x: 72, y: 650, width: 20, height: 20 });
+    const dd = form.createDropdown("country");
+    dd.addOptions(["France", "Belgique"]);
+    dd.addToPage(page, { x: 72, y: 600, width: 160, height: 24 });
+    const rg = form.createRadioGroup("choice");
+    rg.addOptionToPage("yes", page, { x: 72, y: 550, width: 18, height: 18 });
+    rg.addOptionToPage("no", page, { x: 120, y: 550, width: 18, height: 18 });
+    fs.writeFileSync(out("form.pdf"), await doc.save());
+  }
   // subject (orange ellipse) on a gradient background, for remove-bg and image tools
   fs.writeFileSync(out("photo.png"), png(320, 240, (x, y) =>
     (x - 160) ** 2 / 80 ** 2 + (y - 130) ** 2 / 90 ** 2 < 1 ? [230, 120, 40] : [40 + Math.floor(y / 3), 140, 200]));
@@ -83,6 +98,16 @@ function png(w, h, pixel) {
     const page = doc.addPage([400, 200]);
     page.drawImage(img, { x: 20, y: 60, width: img.width * 0.6, height: img.height * 0.6 });
     fs.writeFileSync(out("scan.pdf"), await doc.save());
+  }
+  // text + an embedded raster image, for extract-images
+  {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const img = await doc.embedPng(fs.readFileSync(out("photo.png")));
+    const page = doc.addPage();
+    page.drawText("Document with a picture", { x: 72, y: 760, size: 14, font });
+    page.drawImage(img, { x: 72, y: 500, width: img.width, height: img.height });
+    fs.writeFileSync(out("images.pdf"), await doc.save());
   }
   fs.writeFileSync(out("sheet.csv"), "Nom;Montant\nAlice;12,5\nBob;7\n");
   // minimal ODP (zip with stored entries, mimetype first)

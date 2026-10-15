@@ -18,7 +18,7 @@ export type OptionDef =
   | (Base & { type: "color"; default: string })
   | (Base & { type: "checkbox"; default: boolean });
 
-export type Editor = "organize" | "sign" | "edit" | "crop" | "redact" | "regions";
+export type Editor = "organize" | "sign" | "edit" | "crop" | "redact" | "regions" | "form";
 
 export interface Tool {
   id: string;
@@ -31,8 +31,9 @@ export interface Tool {
   maxFiles?: number;
   mode: "client" | "server";
   endpoint?: string; // server: POST /api/<endpoint>
-  /** server: how files are sent. "each" = one request per file (default), "pair" = file_a/file_b */
-  serverInput?: "each" | "pair";
+  /** server: how files are sent. "each" = one request per file (default), "pair" = file_a/file_b,
+   * "all" = a single request with every file appended as `files` */
+  serverInput?: "each" | "pair" | "all";
   options?: OptionDef[];
   editor?: Editor;
   /**
@@ -43,7 +44,7 @@ export interface Tool {
 }
 
 const PDF = "application/pdf,.pdf";
-const IMG = "image/png,image/jpeg,image/webp,image/bmp,.png,.jpg,.jpeg,.webp,.bmp";
+const IMG = "image/png,image/jpeg,image/webp,image/bmp,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.heic,.heif";
 
 const C = {
   brand: "#7c3aed",
@@ -77,6 +78,17 @@ export const TOOLS: Tool[] = [
     options: [{ type: "select", key: "perSheet", options: ["2", "4"], default: "2" }],
   },
 
+  { id: "alternate-pdf", category: "organize", icon: "ArrowDownUp", color: C.brand, accept: PDF, multiple: true, minFiles: 2, maxFiles: 2, mode: "client",
+    options: [{ type: "checkbox", key: "reverseSecond", default: true }],
+  },
+  {
+    id: "split-in-half", category: "organize", icon: "SquareSplitHorizontal", color: C.brand, accept: PDF, multiple: true, mode: "client",
+    options: [
+      { type: "select", key: "halfMode", options: ["left-right", "top-bottom"], default: "left-right" },
+      { type: "checkbox", key: "rtl", default: false, showIf: { key: "halfMode", equals: "left-right" } },
+    ],
+  },
+
   // ---------- Optimize ----------
   {
     id: "compress-pdf", category: "optimize", icon: "Minimize2", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "compress-pdf",
@@ -99,6 +111,13 @@ export const TOOLS: Tool[] = [
       { type: "number", key: "margin", min: 0, max: 100, default: 20 },
     ],
   },
+  {
+    id: "scan-to-pdf", category: "convert-to", icon: "ScanLine", color: C.orange, accept: IMG, multiple: true, mode: "server", endpoint: "scan-to-pdf", serverInput: "all",
+    options: [
+      { type: "select", key: "filter", options: ["color", "gray", "bw"], default: "color" },
+      { type: "select", key: "pageSize", options: ["a4", "fit"], default: "a4" },
+    ],
+  },
   { id: "word-to-pdf", category: "convert-to", icon: "FileText", color: C.blue, accept: ".doc,.docx,.odt,.rtf,.txt", multiple: true, mode: "server", endpoint: "office-to-pdf" },
   { id: "powerpoint-to-pdf", category: "convert-to", icon: "Presentation", color: C.orange, accept: ".ppt,.pptx,.odp", multiple: true, mode: "server", endpoint: "office-to-pdf" },
   { id: "excel-to-pdf", category: "convert-to", icon: "Sheet", color: C.green, accept: ".xls,.xlsx,.ods,.csv", multiple: true, mode: "server", endpoint: "office-to-pdf" },
@@ -119,6 +138,11 @@ export const TOOLS: Tool[] = [
   { id: "pdf-to-powerpoint", category: "convert-from", icon: "Presentation", color: C.orange, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-powerpoint" },
   { id: "pdf-to-excel", category: "convert-from", icon: "Sheet", color: C.green, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-excel" },
   { id: "pdf-to-text", category: "convert-from", icon: "FileType", color: C.gray, accept: PDF, multiple: true, mode: "client" },
+  { id: "pdf-to-markdown", category: "convert-from", icon: "FileCode", color: C.gray, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-markdown" },
+  {
+    id: "extract-images", category: "convert-from", icon: "Images", color: C.orange, accept: PDF, multiple: true, mode: "server", endpoint: "extract-images",
+    options: [{ type: "select", key: "minSize", options: ["all", "64", "200"], default: "64" }],
+  },
   { id: "pdf-to-pdfa", category: "convert-from", icon: "Archive", color: C.gray, accept: PDF, multiple: true, mode: "server", endpoint: "pdf-to-pdfa" },
 
   // ---------- Edit ----------
@@ -139,6 +163,27 @@ export const TOOLS: Tool[] = [
     ],
   },
   {
+    id: "header-footer", category: "edit", icon: "PanelTop", color: C.indigo, accept: PDF, multiple: true, mode: "client",
+    options: [
+      { type: "text", key: "headerText", default: "", placeholder: "{file} - {date}" },
+      { type: "text", key: "footerText", default: "Page {n} / {total}", placeholder: "Page {n} / {total}" },
+      { type: "select", key: "align", options: ["left", "center", "right"], default: "center" },
+      { type: "number", key: "fontSize", min: 6, max: 36, default: 10 },
+      { type: "number", key: "startAt", min: 1, default: 1 },
+    ],
+  },
+  {
+    id: "bates-numbering", category: "edit", icon: "Hash", color: C.indigo, accept: PDF, multiple: true, mode: "client",
+    options: [
+      { type: "text", key: "prefix", default: "", placeholder: "ACME-" },
+      { type: "text", key: "suffix", default: "" },
+      { type: "number", key: "startAt", min: 1, default: 1 },
+      { type: "number", key: "digits", min: 1, max: 10, default: 6 },
+      { type: "select", key: "position", options: ["bottom-center", "bottom-right", "bottom-left", "top-center", "top-right", "top-left"], default: "bottom-right" },
+      { type: "number", key: "fontSize", min: 6, max: 48, default: 10 },
+    ],
+  },
+  {
     id: "watermark-pdf", category: "edit", icon: "Stamp", color: C.indigo, accept: PDF, multiple: true, mode: "client",
     options: [
       { type: "text", key: "text", default: "CONFIDENTIAL" },
@@ -151,6 +196,10 @@ export const TOOLS: Tool[] = [
   { id: "crop-pdf", category: "edit", icon: "Crop", color: C.indigo, accept: PDF, multiple: false, mode: "client", editor: "crop" },
   { id: "edit-pdf", category: "edit", icon: "PencilLine", color: C.pink, accept: PDF, multiple: false, mode: "client", editor: "edit" },
   { id: "sign-pdf", category: "edit", icon: "Signature", color: C.pink, accept: PDF, multiple: false, mode: "client", editor: "sign" },
+  {
+    id: "fill-pdf-form", category: "edit", icon: "TextCursorInput", color: C.pink, accept: PDF, multiple: false, mode: "client", editor: "form",
+    options: [{ type: "checkbox", key: "flatten", default: false }],
+  },
   { id: "compare-pdf", category: "edit", icon: "GitCompare", color: C.teal, accept: PDF, multiple: true, minFiles: 2, maxFiles: 2, mode: "server", endpoint: "compare-pdf", serverInput: "pair" },
 
   // ---------- Security ----------

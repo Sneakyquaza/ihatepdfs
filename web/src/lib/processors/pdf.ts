@@ -1,7 +1,8 @@
-import { degrees, type PDFDict, PDFDocument, PDFFont, PDFName, PDFPage, rgb, StandardFonts } from "pdf-lib";
-import type { Box, CropRect, EditItem, OrganizeItem, SignPlacement } from "../editorTypes";
+import { degrees, PDFCheckBox, type PDFDict, PDFDocument, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField, PDFFont, PDFName, PDFPage, rgb, StandardFonts } from "pdf-lib";
+import type { Box, CropRect, EditItem, FormFillData, OrganizeItem, SignPlacement } from "../editorTypes";
 import { baseName, hexToRgb01, type Options, type OutputFile, parsePages, parseRangeGroups } from "../files";
 import { AppError } from "../errors";
+import { readFormFields } from "../formFields";
 import { canvasToBlob, openPdf, renderPage } from "../pdfjs";
 
 const PDF_MIME = "application/pdf";
@@ -91,6 +92,48 @@ export async function mergePdf(files: File[]): Promise<OutputFile[]> {
   return [await save(out, "merged.pdf")];
 }
 
+export async function alternatePdf(files: File[], o: Options): Promise<OutputFile[]> {
+  const [a, b] = await Promise.all(files.slice(0, 2).map((f) => load(f)));
+  const ia = a.getPageIndices();
+  const ib = b.getPageIndices();
+  if (o.reverseSecond) ib.reverse();
+  const out = await PDFDocument.create();
+  const pa = await out.copyPages(a, ia);
+  const pb = await out.copyPages(b, ib);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if (i < pa.length) out.addPage(pa[i]);
+    if (i < pb.length) out.addPage(pb[i]);
+  }
+  return [await save(out, `${baseName(files[0].name)}_alternated.pdf`)];
+}
+
+export async function splitInHalf(files: File[], o: Options): Promise<OutputFile[]> {
+  const lr = o.halfMode !== "top-bottom";
+  const outs: OutputFile[] = [];
+  for (const f of files) {
+    const src = await load(f);
+    const out = await PDFDocument.create();
+    for (const p of await out.copyPages(src, src.getPageIndices())) {
+      // the second half is a shallow clone of the page dict: content and resources stay shared
+      const clone = p.node.clone();
+      const second = PDFPage.of(clone, out.context.register(clone), out);
+      // display-space rectangles of the two halves, in reading order (or reversed for right-to-left)
+      const halves = lr ? [[0, 0, 0.5, 1], [0.5, 0, 1, 1]] : [[0, 0, 1, 0.5], [0, 0.5, 1, 1]];
+      if (o.rtl && lr) halves.reverse();
+      [p, second].forEach((page, k) => {
+        const [u0, v0, u1, v1] = halves[k];
+        const [x0, y0] = mapPoint(page, u0, v0);
+        const [x1, y1] = mapPoint(page, u1, v1);
+        page.setCropBox(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+      });
+      out.addPage(p);
+      out.addPage(second);
+    }
+    outs.push(await save(out, `${baseName(f.name)}_halved.pdf`));
+  }
+  return outs;
+}
+
 export async function splitPdf(files: File[], o: Options): Promise<OutputFile[]> {
   const file = files[0];
   const src = await load(file);
@@ -153,11 +196,21 @@ export async function rotatePdf(files: File[], o: Options): Promise<OutputFile[]
   return outs;
 }
 
+/** Draw a one-line label inside the page margin (display space, so it works on rotated pages). */
+function drawLabel(page: PDFPage, font: PDFFont, text: string, size: number, vert: string, horiz: string) {
+  const margin = 24;
+  const { dispW, dispH } = placeBox(page, { x: 0, y: 0, w: 1, h: 1 });
+  const tw = font.widthOfTextAtSize(text, size);
+  const bx = horiz === "left" ? margin : horiz === "right" ? dispW - margin - tw : (dispW - tw) / 2;
+  const by = vert === "top" ? margin : dispH - margin - size;
+  const pl = placeBox(page, { x: bx / dispW, y: by / dispH, w: tw / dispW, h: size / dispH });
+  page.drawText(text, { x: pl.x, y: pl.y, size, font, color: rgb(0.2, 0.2, 0.2), rotate: pl.rotate });
+}
+
 export async function pageNumbers(files: File[], o: Options): Promise<OutputFile[]> {
   const size = Number(o.fontSize) || 12;
   const start = Number(o.startAt) || 1;
   const [vert, horiz] = String(o.position).split("-");
-  const margin = 24;
   const outs: OutputFile[] = [];
   for (const f of files) {
     const doc = await load(f);
@@ -167,14 +220,53 @@ export async function pageNumbers(files: File[], o: Options): Promise<OutputFile
       const n = i + start;
       const label =
         o.numberFormat === "n-of-total" ? `${n} / ${total + start - 1}` : o.numberFormat === "page-n" ? `Page ${n}` : `${n}`;
-      const { dispW, dispH } = placeBox(page, { x: 0, y: 0, w: 1, h: 1 });
-      const tw = font.widthOfTextAtSize(label, size);
-      const bx = horiz === "left" ? margin : horiz === "right" ? dispW - margin - tw : (dispW - tw) / 2;
-      const by = vert === "top" ? margin : dispH - margin - size;
-      const pl = placeBox(page, { x: bx / dispW, y: by / dispH, w: tw / dispW, h: size / dispH });
-      page.drawText(label, { x: pl.x, y: pl.y, size, font, color: rgb(0.2, 0.2, 0.2), rotate: pl.rotate });
+      drawLabel(page, font, label, size, vert, horiz);
     });
     outs.push(await save(doc, `${baseName(f.name)}_numbered.pdf`));
+  }
+  return outs;
+}
+
+export async function headerFooter(files: File[], o: Options): Promise<OutputFile[]> {
+  const header = String(o.headerText ?? "").trim();
+  const footer = String(o.footerText ?? "").trim();
+  if (!header && !footer) throw new AppError("nothing_to_add");
+  const size = Math.min(36, Math.max(6, Number(o.fontSize) || 10));
+  const start = Number(o.startAt) || 1;
+  const horiz = String(o.align || "center");
+  const now = new Date();
+  const date = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+  const outs: OutputFile[] = [];
+  for (const f of files) {
+    const doc = await load(f);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const total = doc.getPageCount() + start - 1;
+    const name = baseName(f.name);
+    doc.getPages().forEach((page, i) => {
+      const fill = (tpl: string) =>
+        safeText(font, tpl.replace(/\{n\}/g, String(i + start)).replace(/\{total\}/g, String(total)).replace(/\{date\}/g, date).replace(/\{file\}/g, name));
+      if (header) drawLabel(page, font, fill(header), size, "top", horiz);
+      if (footer) drawLabel(page, font, fill(footer), size, "bottom", horiz);
+    });
+    outs.push(await save(doc, `${name}_headerfooter.pdf`));
+  }
+  return outs;
+}
+
+export async function batesNumbering(files: File[], o: Options): Promise<OutputFile[]> {
+  const size = Number(o.fontSize) || 10;
+  const digits = Math.min(10, Math.max(1, Math.round(Number(o.digits) || 6)));
+  let n = Math.max(0, Math.round(Number(o.startAt) || 1));
+  const [vert, horiz] = String(o.position).split("-");
+  const outs: OutputFile[] = [];
+  for (const f of files) {
+    const doc = await load(f);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (const page of doc.getPages()) {
+      const label = safeText(font, `${o.prefix ?? ""}${String(n++).padStart(digits, "0")}${o.suffix ?? ""}`);
+      drawLabel(page, font, label, size, vert, horiz);
+    }
+    outs.push(await save(doc, `${baseName(f.name)}_bates.pdf`));
   }
   return outs;
 }
@@ -228,6 +320,38 @@ export async function signPdf(files: File[], _o: Options, placements: SignPlacem
     page.drawImage(img, { x: pl.x, y: pl.y, width: pl.width, height: pl.height, rotate: pl.rotate });
   }
   return [await save(doc, `${baseName(files[0].name)}_signed.pdf`)];
+}
+
+export async function fillPdfForm(files: File[], o: Options, data: FormFillData | null): Promise<OutputFile[]> {
+  const doc = await load(files[0]);
+  readFormFields(doc, files[0].name); // throws no_form_fields / xfa_form
+  const form = doc.getForm();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (const [name, value] of Object.entries(data?.values ?? {})) {
+    try {
+      const field = form.getField(name);
+      const text = (v: string) => safeText(font, v);
+      if (field instanceof PDFTextField) field.setText(text(String(value)));
+      else if (field instanceof PDFCheckBox) { if (value) field.check(); else field.uncheck(); }
+      else if (field instanceof PDFRadioGroup) field.select(String(value));
+      else if (field instanceof PDFDropdown) field.select(text(String(value)));
+      else if (field instanceof PDFOptionList) field.select(([] as string[]).concat(value as string[]).map(text));
+      else continue;
+      field.defaultUpdateAppearances(font);
+    } catch {
+      // skip a field we cannot set (unknown name, value outside its options, odd structure)
+    }
+  }
+  try {
+    if (o.flatten) {
+      // fields with no appearance stream yet would vanish when flattened
+      try { form.updateFieldAppearances(font); } catch { /* keep existing appearances */ }
+      form.flatten({ updateFieldAppearances: false });
+    }
+    return [await save(doc, `${baseName(files[0].name)}_filled.pdf`)];
+  } catch {
+    throw new AppError("processing_failed");
+  }
 }
 
 export async function editPdf(files: File[], _o: Options, items: EditItem[]): Promise<OutputFile[]> {

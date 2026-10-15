@@ -1,7 +1,20 @@
 const { chromium } = require("playwright");
 const path = require("path");
 const BASE = process.env.BASE || "http://localhost:3000/fr";
-const F = (n) => path.join(__dirname, "fixtures", n);
+// Fixtures are generated into fixtures/ (gitignored) by fixtures.js, except the real HEIC photos in static/ (committed binaries:
+// photo.heic is a 96x64 landscape, photo-rot.heic the same pixels with an irot box, i.e. 64x96 once upright).
+const F = (n) => path.join(__dirname, require("fs").existsSync(path.join(__dirname, "static", n)) ? "static" : "fixtures", n);
+// width/height of a PNG or JPEG file
+const dims = (file) => {
+  const b = require("fs").readFileSync(file);
+  if (b.readUInt32BE(0) === 0x89504e47) return [b.readUInt32BE(16), b.readUInt32BE(20)];
+  for (let i = 2; i < b.length; ) {
+    const m = b[i + 1];
+    if (m >= 0xc0 && m <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(m)) return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
+    i += 2 + b.readUInt16BE(i + 2);
+  }
+};
+const upright = (file) => { const [w, h] = dims(file); if (w !== 64 || h !== 96) throw new Error(`HEIC not upright: ${w}x${h}`); };
 const OUT = path.join(__dirname, "out");
 require("fs").mkdirSync(OUT, { recursive: true });
 
@@ -13,13 +26,19 @@ const cases = [
   ["organize-pdf", ["a.pdf", "b.pdf"], async (p) => p.waitForTimeout(1500)],
   ["rotate-pdf", ["a.pdf"]],
   ["page-numbers", ["a.pdf"]],
+  ["alternate-pdf", ["a.pdf", "b.pdf"]],
+  ["split-in-half", ["a.pdf"]],
+  ["header-footer", ["a.pdf"]],
+  ["bates-numbering", ["a.pdf", "b.pdf"]],
   ["watermark-pdf", ["a.pdf"]],
   ["pdf-to-jpg", ["a.pdf"]],
   ["jpg-to-pdf", ["img.png", "photo.png"]],
+  ["jpg-to-pdf", ["photo.heic", "img.png"]], // HEIC photo + PNG
   ["resize-image", ["photo.png"]],
   ["crop-image", ["photo.png"], async (p) => p.waitForTimeout(500)],
   ["compress-image", ["photo.png"]],
   ["convert-image", ["photo.png"]],
+  ["convert-image", ["photo-rot.heic"], undefined, upright], // HEIC with irot must come out upright
   ["rotate-image", ["photo.png"]],
   ["watermark-image", ["photo.png"]],
   ["compress-pdf", ["a.pdf"]],
@@ -35,6 +54,9 @@ const cases = [
   ["pdf-to-excel", ["a.pdf"]],
   ["protect-pdf", ["a.pdf"], async (p) => p.fill("#opt-password", "x")],
   ["compare-pdf", ["a.pdf", "b.pdf"]],
+  ["extract-images", ["images.pdf"]],
+  ["pdf-to-markdown", ["a.pdf"]],
+  ["scan-to-pdf", ["photo.png", "text.png"]],
   ["upscale-image", ["photo.png"]],
   ["html-to-pdf", [], async (p) => p.fill("#opt-url", "https://example.com")],
   ["sign-pdf", ["a.pdf"], async (p) => {
@@ -55,6 +77,12 @@ const cases = [
     await p.locator("textarea").fill("Hello édition");
     await p.getByRole("button", { name: "Surligner" }).click();
     await p.mouse.move(o.x + 60, o.y + 50); await p.mouse.down(); await p.mouse.move(o.x + 300, o.y + 80); await p.mouse.up();
+  }],
+  ["fill-pdf-form", ["form.pdf"], async (p) => {
+    await p.getByLabel("fullname").fill("Ada Lovelace");
+    await p.getByLabel("agree").check();
+    await p.getByLabel("country").selectOption("Belgique");
+    await p.getByLabel("choice: no").check();
   }],
   ["n-up-pdf", ["a.pdf"]],
   ["grayscale-pdf", ["a.pdf"]],
@@ -96,7 +124,7 @@ const cases = [
   if (process.env.THEME) await ctx.addInitScript((t) => { try { localStorage.setItem("ihp:theme", t); } catch {} }, process.env.THEME);
   const shot = (p, id, n) => process.env.SHOTS && p.screenshot({ path: path.join(OUT, `shot_${process.env.THEME || "x"}${process.env.MOBILE ? "-m" : ""}_${id}_${n}.png`), fullPage: true });
   const only = process.argv[2];
-  for (const [id, files, setup] of cases) {
+  for (const [id, files, setup, check] of cases) {
     if (only && !only.split(",").includes(id)) continue;
     const p = await ctx.newPage();
     const errs = [];
@@ -125,9 +153,10 @@ const cases = [
       }
       const file = path.join(OUT, `${id}__${d.suggestedFilename()}`);
       await d.saveAs(file);
+      if (check) check(file);
       const size = require("fs").statSync(file).size;
       console.log(`OK   ${id.padEnd(18)} ${d.suggestedFilename()} ${size}B ${Date.now() - t0}ms ${errs.length ? "PAGEERR " + errs.join("|") : ""}`);
-      if (["sign-pdf", "edit-pdf", "crop-image", "organize-pdf", "crop-pdf", "redact-pdf", "blur-image"].includes(id)) {
+      if (["sign-pdf", "edit-pdf", "fill-pdf-form", "crop-image", "organize-pdf", "crop-pdf", "redact-pdf", "blur-image"].includes(id)) {
         await p.getByText("Recommencer").click();
       }
     } catch (e) {
@@ -298,7 +327,7 @@ const cases = [
 
     const p = await ctx.newPage();
     await p.goto(BASE);
-    const recentOk = await p.getByRole("heading", { name: "Utilisés récemment" }).isVisible();
+    const recentOk = await p.getByRole("heading", { name: "Utilisés récemment" }).waitFor({ timeout: 5000 }).then(() => true, () => false);
     await p.getByRole("button", { name: "Ajouter aux favoris" }).first().click();
     const favOk = await p.getByRole("heading", { name: "Favoris" }).isVisible();
     if (!recentOk || !favOk) process.exitCode = 1;

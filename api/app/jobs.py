@@ -152,3 +152,21 @@ def upscale(src: str, out: str, scale: int) -> None:
             up = im.resize((im.width * scale, im.height * scale), Image.LANCZOS)
             up = up.filter(ImageFilter.UnsharpMask(radius=2, percent=80, threshold=2))
         up.save(out, optimize=True)
+
+
+def extract_images(src: str, out: str, name: str, min_size: int) -> None:
+    from .extract_images import extract
+
+    extract(src, out, name, min_size)
+
+
+def pdf_to_markdown(src: str, out: str, name: str, tmp_dir: str) -> None:
+    from .markdown import convert
+
+    convert(src, out, name, tmp_dir)
+
+
+def scan_to_pdf(paths: list[str], out: str, mode: str, page_size: str) -> None:
+    from .scan import convert
+
+    convert(paths, out, mode, page_size)

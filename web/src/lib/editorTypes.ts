@@ -32,4 +32,8 @@ export interface CropRect {
   h: number;
 }
 
-export type EditorData = OrganizeItem[] | SignPlacement[] | EditItem[] | Box[] | CropRect | CropRect[] | null;
+export interface FormFillData {
+  values: Record<string, string | boolean | string[]>; // fully-qualified field name -> new value
+}
+
+export type EditorData = FormFillData | OrganizeItem[] | SignPlacement[] | EditItem[] | Box[] | CropRect | CropRect[] | null;

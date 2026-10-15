@@ -187,6 +187,32 @@ async def pdf_to_powerpoint(file: UploadFile = File(...)):
     return await handle(work)
 
 
+@app.post("/api/pdf-to-markdown")
+async def pdf_to_markdown(file: UploadFile = File(...)):
+    async def work(ws: Workspace):
+        src = await save_pdf(file, ws, MAX_OCR_PAGES)
+        out = ws.file(".md")
+        await run_job(jobs.pdf_to_markdown, src, str(out), file.filename or "", str(ws.path))
+        return send(out, f"{stem_of(file)}.md", ws)
+
+    return await handle(work)
+
+
+@app.post("/api/extract-images")
+async def extract_images(file: UploadFile = File(...), minSize: str = Form("64")):
+    sizes = {"all": 0, "64": 64, "200": 200}
+    if minSize not in sizes:
+        raise ApiError(400, "invalid_option", "Invalid minimum size")
+
+    async def work(ws: Workspace):
+        src = await save_pdf(file, ws)
+        out = ws.file(".zip")
+        await run_job(jobs.extract_images, src, str(out), stem_of(file), sizes[minSize])
+        return send(out, f"{stem_of(file)}_images.zip", ws)
+
+    return await handle(work)
+
+
 RENDER_URL = os.getenv("RENDER_URL", "http://render:8000")
 
 
@@ -345,5 +371,24 @@ async def upscale_image(file: UploadFile = File(...), scale: int = Form(2)):
         out = ws.file(".png")
         await run_job(jobs.upscale, str(src), str(out), scale)
         return send(out, f"{stem_of(file)}_x{scale}.png", ws)
+
+    return await handle(work)
+
+
+MAX_SCAN_FILES = 30
+
+
+@app.post("/api/scan-to-pdf")
+async def scan_to_pdf(files: list[UploadFile] = File(...), filter: str = Form("color"), pageSize: str = Form("a4")):
+    if filter not in ("color", "gray", "bw") or pageSize not in ("fit", "a4"):
+        raise ApiError(400, "invalid_option", "Invalid option")
+    if len(files) > MAX_SCAN_FILES:
+        raise ApiError(400, "too_many_files", "Too many files", max=MAX_SCAN_FILES)
+
+    async def work(ws: Workspace):
+        srcs = [str(await save_upload(f, ws, IMAGES)) for f in files]
+        out = ws.file(".pdf")
+        await run_job(jobs.scan_to_pdf, srcs, str(out), filter, pageSize)
+        return send(out, "scan.pdf", ws)
 
     return await handle(work)

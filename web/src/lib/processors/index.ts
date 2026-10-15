@@ -24,6 +24,10 @@ const img = () => import("./image");
 // Each processor module is loaded lazily so a tool page only ships the code it needs.
 const CLIENT: Record<string, Processor> = {
   "merge-pdf": async (f) => (await pdf()).mergePdf(f),
+  "alternate-pdf": async (f, o) => (await pdf()).alternatePdf(f, o),
+  "split-in-half": async (f, o) => (await pdf()).splitInHalf(f, o),
+  "header-footer": async (f, o) => (await pdf()).headerFooter(f, o),
+  "bates-numbering": async (f, o) => (await pdf()).batesNumbering(f, o),
   "split-pdf": async (f, o) => (await pdf()).splitPdf(f, o),
   "remove-pages": async (f, o) => (await pdf()).removePages(f, o),
   "extract-pages": async (f, o) => (await pdf()).extractPages(f, o),
@@ -32,6 +36,7 @@ const CLIENT: Record<string, Processor> = {
   "page-numbers": async (f, o) => (await pdf()).pageNumbers(f, o),
   "watermark-pdf": async (f, o) => (await pdf()).watermarkPdf(f, o),
   "sign-pdf": async (f, o, c) => (await pdf()).signPdf(f, o, c.editorData as never),
+  "fill-pdf-form": async (f, o, c) => (await pdf()).fillPdfForm(f, o, c.editorData as never),
   "edit-pdf": async (f, o, c) => (await pdf()).editPdf(f, o, c.editorData as never),
   "pdf-to-jpg": async (f, o) => (await pdf()).pdfToImages(f, o),
   "jpg-to-pdf": async (f, o) => (await pdf()).imagesToPdf(f, o),
@@ -110,6 +115,11 @@ async function runServer(tool: Tool, files: File[], opts: Options, ctx: RunConte
     form.append("file_a", files[0]);
     form.append("file_b", files[1]);
     return [await post(endpoint, form, "result.pdf", ctx.onProgress)];
+  }
+  if (tool.serverInput === "all") {
+    const form = withOptions(new FormData(), opts);
+    for (const f of files) form.append("files", f);
+    return [await post(endpoint, form, "scan.pdf", ctx.onProgress)];
   }
   if (!files.length) return [await post(endpoint, withOptions(new FormData(), opts), "result.pdf", ctx.onProgress)];
   const outs: OutputFile[] = [];

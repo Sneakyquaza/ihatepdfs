@@ -9,6 +9,7 @@ import type { EditorData } from "@/lib/editorTypes";
 import { AppError } from "@/lib/errors";
 import { downloadBlob, extOf, type Options, type OutputFile } from "@/lib/files";
 import { takeHandOff } from "@/lib/handoff";
+import { heicToJpeg, isHeicFile } from "@/lib/heic";
 import { pushRecent } from "@/lib/prefs";
 import { type Progress, runTool } from "@/lib/processors";
 import { CLIENT_WARN_MB, defaultOptions, SERVER_MAX_MB, type Tool, TOOL_MAP } from "@/lib/tools";
@@ -29,6 +30,7 @@ const EDITORS = {
   edit: dynamic(() => import("./editors/EditPdfEditor"), { ssr: false, loading: editorLoading }),
   crop: dynamic(() => import("./editors/CropEditor"), { ssr: false, loading: editorLoading }),
   redact: dynamic(() => import("./editors/RedactEditor"), { ssr: false, loading: editorLoading }),
+  form: dynamic(() => import("./editors/FormEditor"), { ssr: false, loading: editorLoading }),
   regions: dynamic(() => import("./editors/RegionsEditor"), { ssr: false, loading: editorLoading }),
 };
 
@@ -61,21 +63,39 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
   const [error, setError] = useState<RunError | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [converting, setConverting] = useState(false);
+
+  // single intake point (picker, drop, hand-off): HEIC/HEIF photos become plain JPEGs here
   const addFiles = useCallback(
-    (list: FileList | File[]) => {
-      const incoming = Array.from(list);
+    async (list: FileList | File[]) => {
+      let incoming = Array.from(list).filter((f) => accepts(tool.accept, f));
+      setError(null);
+      try {
+        const heic = await Promise.all(incoming.map(isHeicFile));
+        if (heic.some(Boolean)) {
+          setConverting(true);
+          incoming = await Promise.all(incoming.map((f, i) => (heic[i] ? heicToJpeg(f) : f)));
+        }
+      } catch (e) {
+        const errors = t.errors as Record<string, string>;
+        if (e instanceof AppError && errors[e.code]) setError({ code: e.code, text: fmt(errors[e.code], e.params) });
+        return;
+      } finally {
+        setConverting(false);
+      }
       setFiles((prev) => limitFiles(tool, tool.multiple ? [...prev, ...incoming] : incoming));
       setEditorData(null);
-      setError(null);
     },
-    [tool],
+    [tool, t],
   );
   const dragging = useWindowDrop(addFiles, status !== "done");
 
   // files handed over by "continue with…" on the previous tool's result screen
   useEffect(() => {
     let alive = true;
-    takeHandOff().then((handed) => alive && handed && addFiles(handed));
+    takeHandOff().then((handed) => {
+      if (alive && handed) void addFiles(handed);
+    });
     return () => {
       alive = false;
     };
@@ -169,6 +189,16 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
     return (
       <div className="mx-auto max-w-4xl px-4 py-12">
         {backLink}
+        {converting && (
+          <p role="status" className="mt-4 flex items-center gap-2 text-sm text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" /> {t.runner.convertingHeic}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+            {error.text}
+          </p>
+        )}
         <UploadHero tool={tool} t={t} onPick={pick} modeBadge={modeBadge} />
         {fileInput}
         {dragging && <DropOverlay t={t} />}
@@ -180,6 +210,11 @@ export function ToolRunner({ toolId, locale }: { toolId: string; locale: Locale 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       {backLink}
+      {converting && (
+        <p role="status" className="mt-4 flex items-center gap-2 text-sm text-muted">
+          <Loader2 className="h-4 w-4 animate-spin" /> {t.runner.convertingHeic}
+        </p>
+      )}
       <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_340px]">
         <section className="min-w-0 rounded-3xl bg-surface p-4 shadow-sm sm:p-6">
           {Editor ? (

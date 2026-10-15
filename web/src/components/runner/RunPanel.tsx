@@ -62,6 +62,11 @@ export function RunPanel({
                 {t.errors.unlockCta} →
               </Link>
             )}
+            {(error.code === "no_form_fields" || error.code === "xfa_form") && tool.id !== "edit-pdf" && (
+              <Link href={`/${locale}/edit-pdf`} className="mt-2 inline-block font-bold underline">
+                {t.errors.editCta} →
+              </Link>
+            )}
           </div>
         </div>
       )}
