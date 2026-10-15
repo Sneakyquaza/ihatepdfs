@@ -222,7 +222,7 @@ export const en: Dict = {
   editors: {
     area: "Area",
     keyboardHint: "Keyboard: arrows to move (Shift = faster), Alt + arrows to resize, Delete to remove.",
-    redactHint: "Draw the areas to remove, or use the search on the right. Redacted content is removed from the file, not just covered.",
+    redactHint: "Draw the areas to remove, or search for words in the options. Redacted content is removed from the file, not just covered.",
     regionsHint: "Draw the areas to blur. Drag to move, corner to resize.",
     clearAll: "Clear all",
     areas: "area(s)",

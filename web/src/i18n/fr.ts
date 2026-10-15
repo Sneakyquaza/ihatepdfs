@@ -220,7 +220,7 @@ export const fr = {
   editors: {
     area: "Zone",
     keyboardHint: "Clavier : flèches pour déplacer (Maj = plus vite), Alt + flèches pour redimensionner, Suppr pour effacer.",
-    redactHint: "Dessinez les zones à supprimer, ou utilisez la recherche à droite. Le contenu caviardé est retiré du fichier, pas seulement recouvert.",
+    redactHint: "Dessinez les zones à supprimer, ou cherchez des mots dans les options. Le contenu caviardé est retiré du fichier, pas seulement recouvert.",
     regionsHint: "Dessinez les zones à flouter. Glissez pour déplacer, coin pour redimensionner.",
     clearAll: "Tout effacer",
     areas: "zone(s)",
