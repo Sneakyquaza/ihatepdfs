@@ -7,3 +7,7 @@ web/public/pdf.worker.min.mjs
 
 # Server-specific reverse proxy config (kept locally, not published)
 deploy/*.conf
+
+# Claude Code files (local only)
+CLAUDE.md
+.claude/
